@@ -105,6 +105,7 @@ begin # Initialization
   @c_nick      = 51                     # Color for matching nick
   @c_gnick     = 87                     # Color for matching gnick
   @c_path      = 208                    # Color for valid path
+  @c_switch    = 148                    # Color for switches/options
   @c_tabselect = 207                    # Color for selected tabcompleted item
   @c_taboption = 244                    # Color for unselected tabcompleted item
   # Prompt
@@ -361,6 +362,8 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
       el.c(@c_path)
     elsif system "which #{el}", %i[out err] => File::NULL
       el.c(@c_cmd)
+    elsif el =~ /^-/
+      el.c(@c_switch)
     else
       el
     end
