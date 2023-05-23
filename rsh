@@ -359,7 +359,7 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
       el.c(@c_gnick)
     elsif File.exists?(el.sub(/^~/, "/home/#{@user}"))
       el.c(@c_path)
-    elsif system("which '#{el}' >/dev/null")
+    elsif system "which #{el}", %i[out err] => File::NULL
       el.c(@c_cmd)
     else
       el
