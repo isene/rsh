@@ -1,0 +1,12 @@
+@prompt = "#{@user}@#{@node}".c(46) + ":".c(255) + " #{Dir.pwd}/".c(196) + " ".c(7)
+@nick = {"ls"=>"ls --color -F", "la"=>"ls -a --color -F", "ll"=>"ls -l --color -F", "l"=>"less"}
+@gnick = {}
+@history = []
+@c_prompt    = 196  # Color for basic prompt
+@c_cmd       = 48   # Color for valid command
+@c_nick      = 51   # Color for matching nick
+@c_gnick     = 87   # Color for matching gnick
+@c_path      = 208  # Color for valid path
+@c_tabselect = 207  # Color for selected tabcompleted item
+@c_taboption = 244  # Color for unselected tabcompleted item
+
