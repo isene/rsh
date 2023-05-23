@@ -10,7 +10,7 @@ Simple. One file. Minimum external requirements.
 # Installation
 Clone this repo and drop `rsh` into your preferred bin directory. Drop `.rshrc` into your home directory and edit as you see fit.
 
-Or simply `gem install rsh`.
+Or simply `gem install ruby-shell`.
 
 # Features
 * Aliases (called `nicks`in rsh) - both for commands and general nicks
