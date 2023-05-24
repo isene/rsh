@@ -51,7 +51,5 @@ By entering `:some-ruby-command` you have full access to the Ruby universe right
 # Not yet implemented
 Lots. Of. Stuff.
 
-Most notably; You cannot paste onto the command line yet.
-
 # License and copyright
 Forget it.

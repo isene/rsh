@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.1"
+@version    = "0.3"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -97,6 +97,7 @@ end
 begin # Requires
   require 'etc'
   require 'io/console'
+  require 'io/wait'
 end
 begin # Initialization
   # Theming
@@ -131,9 +132,9 @@ def getchr # Process key presses
   c = STDIN.getch
   case c
   when "\e"    # ANSI escape sequences
-    case $stdin.getc
+    case STDIN.getc
     when '['   # CSI
-      case $stdin.getc
+      case STDIN.getc
       when 'A' then chr = "UP"
       when 'B' then chr = "DOWN"
       when 'C' then chr = "RIGHT"
@@ -147,7 +148,7 @@ def getchr # Process key presses
       when '8' then chr = "END"    ; chr = "C-END"    if STDIN.getc == "^"
       end
     when 'O'   # Set Ctrl+ArrowKey equal to ArrowKey; May be used for other purposes in the future
-      case $stdin.getc
+      case STDIN.getc
       when 'a' then chr = "C-UP"
       when 'b' then chr = "C-DOWN"
       when 'c' then chr = "C-RIGHT"
@@ -263,6 +264,11 @@ def getstr # A custom Readline-like function
       end
       @history_copy[@stk] = @tabstr + @tabend
     when /^.$/
+      @history_copy[@stk].insert(@pos,chr)
+      @pos += 1
+    end
+    while STDIN.ready?
+      chr = STDIN.getc
       @history_copy[@stk].insert(@pos,chr)
       @pos += 1
     end
