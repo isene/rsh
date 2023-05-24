@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.3"
+@version    = "0.3.1"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -170,7 +170,7 @@ def getchr # Process key presses
   when "" then chr = "LDEL"
   when "\r" then chr = "ENTER"
   when "\t" then chr = "TAB"
-  when /./  then chr = c
+  when /[[:print:]]/  then chr = c
   end
   return chr
 end
