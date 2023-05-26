@@ -101,31 +101,31 @@ begin # Requires
 end
 begin # Initialization
   # Theming
-  @c_prompt    = 196                    # Color for basic prompt
-  @c_cmd       = 48                     # Color for valid command
-  @c_nick      = 51                     # Color for matching nick
-  @c_gnick     = 87                     # Color for matching gnick
-  @c_path      = 208                    # Color for valid path
-  @c_switch    = 148                    # Color for switches/options
-  @c_tabselect = 207                    # Color for selected tabcompleted item
-  @c_taboption = 244                    # Color for unselected tabcompleted item
+  @c_prompt    = 196                      # Color for basic prompt
+  @c_cmd       = 48                       # Color for valid command
+  @c_nick      = 51                       # Color for matching nick
+  @c_gnick     = 87                       # Color for matching gnick
+  @c_path      = 208                      # Color for valid path
+  @c_switch    = 148                      # Color for switches/options
+  @c_tabselect = 207                      # Color for selected tabcompleted item
+  @c_taboption = 244                      # Color for unselected tabcompleted item
+  @c_stamp     = 244                      # Color for time stamp/command
   # Prompt
-  @user        = Etc.getlogin           # For use in @prompt
-  @node        = Etc.uname[:nodename]   # For use in @prompt
-  @prompt      = "rsh >".c(@c_prompt).b # Very basic prompt if not defined in .rshrc
+  @prompt      = "rsh > ".c(@c_prompt).b  # Very basic prompt if not defined in .rshrc
   # Hash & array initializations
-  @nick        = {}                     # Initiate alias/nick hash
-  @gnick       = {}                     # Initiate generic/global alias/nick hash
-  @history     = []                     # Initiate history array
+  @nick        = {}                       # Initiate alias/nick hash
+  @gnick       = {}                       # Initiate generic/global alias/nick hash
+  @history     = []                       # Initiate history array
   # Paths
+  @user = Etc.getpwuid(Process.euid).name # For use in @prompt
   @path        = ["/bin", 
                   "/usr/bin", 
-                  "/home/#{@user}/bin"] # Basic paths for executables if not set in .rshrc
+                  "/home/#{@user}/bin"]   # Basic paths for executables if not set in .rshrc
   # History
-  @histsize    = 100                    # Max history if not set in .rshrc
-  @hloaded     = false                  # Variable to determine if history is loaded
+  @histsize    = 100                      # Max history if not set in .rshrc
+  @hloaded     = false                    # Variable to determine if history is loaded
   # Variable initializations
-  @cmd         = ""                     # Initiate variable @cmd
+  @cmd         = ""                       # Initiate variable @cmd
 end
 # GENERIC FUNCTIONS
 def getchr # Process key presses
@@ -184,9 +184,9 @@ def getstr # A custom Readline-like function
     text = @history_copy[@stk]
     @c.clear_line
     print @prompt
-    row, pos0 = @c.pos
+    row, @pos0 = @c.pos
     print cmd_check(text)
-    @c.col(pos0 + @pos)
+    @c.col(@pos0 + @pos)
     chr = getchr
     return "\n" if chr == "C-G" # Ctrl-G escapes the reasdline
     case chr
@@ -225,7 +225,7 @@ def getstr # A custom Readline-like function
         @history_copy[@stk][@pos] = ""
       end
     when 'WBACK' # Delete one word to the left (Ctrl-W)
-      unless @pos == pos0
+      unless @pos == @pos0
         until @history_copy[@stk][@pos - 1] == " " or @pos == 0
           @pos -= 1
           @history_copy[@stk][@pos] = ""
@@ -244,25 +244,29 @@ def getstr # A custom Readline-like function
       @history_copy[@stk] = ""
       @pos = 0
     when 'TAB'   # Tab completion of dirs and files
-      @tabstr  = @history_copy[@stk][0...@pos]
-      @tabend  = @history_copy[@stk][@pos..]
-      elements = @tabstr.split(" ")
-      elements.append("") if @tabstr.match(" $")
+      @tabstr    = @history_copy[@stk][0...@pos]
+      @tabend    = @history_copy[@stk][@pos..]
+      elements   = @tabstr.split(" ")
+      if @tabstr.match(" $")
+        elements.append("")
+        @tabsearch = ""
+      else
+        @tabsearch = elements.last.to_s
+        @tabstr = @tabstr[0...-@tabsearch.length]
+      end
       i = elements.length - 1
-      m = elements[i].to_s
-      if m == "-"
+      if @tabsearch =~ /^-/
         until i == 0
           i -= 1
           if elements[i] !~ /^-/
-            @tabstr.chop!
             tab_switch(elements[i])
             break
           end
         end
       else
-        tab_all(m)
+        tab_all(@tabsearch)
       end
-      @history_copy[@stk] = @tabstr + @tabend
+      @history_copy[@stk] = @tabstr.to_s + @tabsearch.to_s + @tabend.to_s
     when /^.$/
       @history_copy[@stk].insert(@pos,chr)
       @pos += 1
@@ -277,13 +281,17 @@ def getstr # A custom Readline-like function
   @history[0]
 end
 def tab_switch(str) # TAB completion for command switches (TAB after "-")
-  hlp = `#{str} --help`
-  hlp = hlp.split("\n").grep(/^\s*-{1,2}[^-]/)
-  hlp = hlp.map {|h| h.sub(/^\s*/, '')}
-  switch, tab = tabselect(hlp)
-  switch = switch.sub(/ .*/, '').sub(/,/, '')
-  @tabstr += switch
-  @pos = @tabstr.length
+  begin
+    hlp = `#{str} --help`
+    hlp = hlp.split("\n").grep(/^\s*-{1,2}[^-]/)
+    hlp = hlp.map {|h| h.sub(/^\s*/, '')}
+    switch = tabselect(hlp)
+    switch = switch.sub(/ .*/, '').sub(/,/, '')
+    @tabsearch.chop!
+    @tabsearch += switch
+    @pos = @tabstr.length + @tabsearch.length
+  rescue
+  end
 end
 def tab_all(str) # TAB completion for Dirs/files, nicks and commands
   exe = []
@@ -294,29 +302,18 @@ def tab_all(str) # TAB completion for Dirs/files, nicks and commands
   end
   exe.prepend(*@nick.keys)
   exe.prepend(*@gnick.keys)
-  compl = exe.select {|s| s =~ Regexp.new("^" + str)}
-  fdir = File.expand_path(str)
-  fdir += "/" if Dir.exist?(fdir)
-  fdir += "*"
+  compl       = exe.select {|s| s =~ Regexp.new("^" + str)}
+  fdir        = str
+  fdir       += "/" if Dir.exist?(fdir)
+  fdir       += "*"
   compl.prepend(*Dir.glob(fdir))
-  @tabstr = @tabstr.sub(/#{str}$/, '') unless compl.empty?
-  match, tab = tabselect(compl) unless compl.empty?
-  @tabstr += match if match
-  @tabstr += str if match == ""
-  @pos = @tabstr.length if match
-end
-def nextline # Handle going to the next line in the terminal
-  row, col = @c.pos
-  if row == @maxrow
-    @c.scroll_down
-    @c_row -= 1
-  end
-  @c.next_line
+  match       = tabselect(compl) unless compl.empty?
+  @tabsearch  = match if match
+  @pos        = @tabstr.length + @tabsearch.length if match
 end
 def tabselect(ary) # Let user select from the incoming array
   @c_row, @c_col = @c.pos
   chr = ""
-  tab = false
   i = 0
   ary.length < 5 ? l = ary.length : l = 5
   while chr != "ENTER"
@@ -324,11 +321,15 @@ def tabselect(ary) # Let user select from the incoming array
     l.times do |x|
       if x == 0
         @c.clear_line
-        print "#{@prompt}#{@tabstr}#{ary[i].sub(/(.*?)[ ,].*/, '\1')}#{@tabend}" 
+        tabstart  = cmd_check(@tabstr)
+        tabchoice = ary[i].sub(/(.*?)[ ,].*/, '\1')[@tabsearch.length..]
+        tabline   = "#{@prompt}#{tabstart}#{@tabsearch.c(@c_tabselect)}#{tabchoice}#{@tabend}"
+        print tabline # Full command line
+        @c_col = @pos0 + @tabstr.length + @tabsearch.length + tabchoice.length
         nextline
-        print " #{ary[i]}".c(@c_tabselect)
+        print " #{ary[i]}".c(@c_tabselect)   # Top option selected
       else
-        print " #{ary[x+i]}".c(@c_taboption)
+        print " #{ary[x+i]}".c(@c_taboption) # Next option unselected
       end
       nextline
     end
@@ -343,15 +344,30 @@ def tabselect(ary) # Let user select from the incoming array
       i += 1 unless i > ary.length - 2
     when 'UP'
       i -= 1 unless i == 0
-    when'TAB'
+    when 'TAB'
       chr = "ENTER"
-      tab = true
+    when 'BACK'
+      @tabsearch.chop! unless @tabsearch == ''
+      tab_all(@tabsearch)
+      return @tabsearch
+    when /^[[:print:]]$/
+      @tabsearch += chr
+      tab_all(@tabsearch)
+      return @tabsearch
     end
   end
   @c.clear_screen_down
   @c.row(@c_row)
   @c.col(@c_col)
-  return ary[i], tab
+  return ary[i]
+end
+def nextline # Handle going to the next line in the terminal
+  row, col = @c.pos
+  if row == @maxrow
+    @c.scroll_down
+    @c_row -= 1
+  end
+  @c.next_line
 end
 def hist_clean # Clean up @history
   @history.uniq!
@@ -445,13 +461,14 @@ end
 
 # MAIN PART
 loop do 
+  @user = Etc.getpwuid(Process.euid).name # For use in @prompt
+  @node = Etc.uname[:nodename]            # For use in @prompt
   h = @history; load(Dir.home+'/.rshrc') if File.exist?(Dir.home+'/.rshrc'); @history = h # reload prompt but not history
   @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
   @cmd = getstr # Main work is here
   hist_clean # Clean up the history
   @cmd = "ls" if @cmd == "" # Default to ls when no command is given
   print "\n" # Newline
-  if @cmd == "x" then rshrc; break; end # A simple way to exit rsh
   if @cmd == "r" # Integration with rtfm (https://github.com/isene/RTFM)
     File.write("/tmp/.rshpwd", Dir.pwd)
     system("rtfm /tmp/.rshpwd")
@@ -471,7 +488,7 @@ loop do
         @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
         ga = @gnick.transform_keys {|k| /\b#{Regexp.escape k}\b/}
         @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
-        puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(244)
+        puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
         begin
           if @cmd == "fzf" # fzf integration (https://github.com/junegunn/fzf)
             res = `#{@cmd}`.chomp

@@ -31,6 +31,9 @@ Add command nicks (aliases) with `:nick "some_nick = some_command"`, e.g. `:nick
 ## Tab completion
 You can tab complete almost anything. Hitting `TAB` will try to complete in this priority: nicks, gnicks, commands, dirs/files. Hitting `TAB`after a `-` will list the command switches for the preceding command with a short explanation (from the command's --help), like this `ls -`(`TAB`) will list all the switches/options for the `ls` command.
 
+## Integrations
+rsh is integrated with the [rtfm file manager](https://github.com/isene/RTFM) and with [fzf](https://github.com/junegunn/fzf). Just enter the command `r` and rtfm will be launched - and when you quit the file manager, you will drop back into rsh in the directory you where you exited rtfm. Enter the command `fzf` to launch the fuzzy finder - select the directory/file you want, press `ENTER` and you will find yourself in the directory where that item resides. 
+
 ## Syntax highlighting
 rsh will highlight nicks, gnicks, commands and dirs/files as they are written on the command line.
 
@@ -46,6 +49,7 @@ Variable        | Description
 `@c_path`       | Color for valid path
 `@c_tabselect`  | Color for selected tabcompleted item
 `@c_taboption`  | Color for unselected tabcompleted item
+`@c_stamp`      | Color for time stamp/command
 
 # Enter the world of Ruby
 By entering `:some-ruby-command` you have full access to the Ruby universe right from your command line. You can do anything from `:puts 2 + 13` or `:if 0.7 > Math::sin(34) then puts "OK" end` or whatever tickles you fancy.
