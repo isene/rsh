@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.3.1"
+@version    = "0.5"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -315,21 +315,28 @@ def tabselect(ary) # Let user select from the incoming array
   @c_row, @c_col = @c.pos
   chr = ""
   i = 0
-  ary.length < 5 ? l = ary.length : l = 5
+  ary.length - i < 5 ? l = ary.length - i : l = 5
   while chr != "ENTER"
     @c.clear_screen_down
     l.times do |x|
+      tl = @tabsearch.length
       if x == 0
         @c.clear_line
-        tabstart  = cmd_check(@tabstr)
-        tabchoice = ary[i].sub(/(.*?)[ ,].*/, '\1')[@tabsearch.length..]
-        tabline   = "#{@prompt}#{tabstart}#{@tabsearch.c(@c_tabselect)}#{tabchoice}#{@tabend}"
+        tabchoice = ary[i].sub(/(.*?)[ ,].*/, '\1')
+        tabline   = "#{@prompt}#{cmd_check(@tabstr)}#{tabchoice.c(@c_tabselect)}#{@tabend}"
         print tabline # Full command line
-        @c_col = @pos0 + @tabstr.length + @tabsearch.length + tabchoice.length
+        @c_col = @pos0 + @tabstr.length + tabchoice.length
         nextline
-        print " #{ary[i]}".c(@c_tabselect)   # Top option selected
+        sel0 = " " + ary[i][0...tl]
+        sel1 = ary[i][tl...].c(@c_tabselect)
+        print sel0 + sel1   # Top option selected
       else
-        print " #{ary[x+i]}".c(@c_taboption) # Next option unselected
+        begin
+          opt0 = " " + ary[i+x][0...tl]
+          opt1 = ary[i+x][tl...].c(@c_taboption)
+          print opt0 + opt1   # Next option unselected
+        rescue
+        end
       end
       nextline
     end
@@ -468,39 +475,34 @@ loop do
   @cmd = getstr # Main work is here
   hist_clean # Clean up the history
   @cmd = "ls" if @cmd == "" # Default to ls when no command is given
-  print "\n" # Newline
+  print "\n"; @c.clear_screen_down
   if @cmd == "r" # Integration with rtfm (https://github.com/isene/RTFM)
     File.write("/tmp/.rshpwd", Dir.pwd)
     system("rtfm /tmp/.rshpwd")
     Dir.chdir(File.read("/tmp/.rshpwd"))
     next
   end
-  begin # Execute command
+  begin
     if @cmd.match(/^\s*:/) # Ruby commands are prefixed with ":"
       eval(@cmd[1..-1])
-    else
-      begin # Try cd to cmd
-        @cmd.sub!(/^cd (\S*).*/, '\1')
-        @cmd = Dir.home if @cmd == "~"
-        Dir.chdir(@cmd.strip.sub(/~/, Dir.home))
-      rescue # If cd fails, execute cmd (unless no such cmd)
-        ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
-        @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
-        ga = @gnick.transform_keys {|k| /\b#{Regexp.escape k}\b/}
-        @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
-        puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
-        begin
-          if @cmd == "fzf" # fzf integration (https://github.com/junegunn/fzf)
-            res = `#{@cmd}`.chomp
-            Dir.chdir(File.dirname(res))
-          elsif system(@cmd) # Try execute the command
-          else
-            puts "No such command: #{@cmd}"
-          end
-        rescue
-          if File.exist?(@cmd) # Try to open file with user's editor
-            system("#{ENV['EDITOR']} #{@cmd}")
-          end
+    else # Execute command
+      @cmd.sub!(/^cd (\S*).*/, '\1')
+      @cmd = Dir.home if @cmd == "~"
+      dir  = @cmd.strip.sub(/~/, Dir.home)
+      Dir.chdir(dir) if Dir.exists?(dir)
+      ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
+      @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
+      ga = @gnick.transform_keys {|k| /\b#{Regexp.escape k}\b/}
+      @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
+      puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
+      if @cmd == "fzf" # fzf integration (https://github.com/junegunn/fzf)
+        res = `#{@cmd}`.chomp
+        Dir.chdir(File.dirname(res))
+      else
+        if File.exist?(@cmd) # Try to open file with user's editor
+          system("#{ENV['EDITOR']} #{@cmd}")
+        elsif system(@cmd) # Try execute the command
+        else puts "No such command: #{@cmd}"
         end
       end
     end
