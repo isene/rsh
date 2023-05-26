@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.5"
+@version    = "0.6"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -38,7 +38,7 @@ module Cursor # Terminal cursor movement ANSI codes (thanks to https://github.co
   def pos # Query cursor current position
     res = ''
     $stdin.raw do |stdin|
-      $stdout << "\e[6n"
+      $stdout << CSI + '6n' # Tha actual ANSI get-position
       $stdout.flush
       while (c = stdin.getc) != 'R'
         res << c if c
@@ -93,6 +93,7 @@ module Cursor # Terminal cursor movement ANSI codes (thanks to https://github.co
     print(CSI + 'J')
   end
 end
+
 # INITIALIZATION
 begin # Requires
   require 'etc'
@@ -127,6 +128,7 @@ begin # Initialization
   # Variable initializations
   @cmd         = ""                       # Initiate variable @cmd
 end
+
 # GENERIC FUNCTIONS
 def getchr # Process key presses
   c = STDIN.getch
@@ -244,29 +246,9 @@ def getstr # A custom Readline-like function
       @history_copy[@stk] = ""
       @pos = 0
     when 'TAB'   # Tab completion of dirs and files
-      @tabstr    = @history_copy[@stk][0...@pos]
-      @tabend    = @history_copy[@stk][@pos..]
-      elements   = @tabstr.split(" ")
-      if @tabstr.match(" $")
-        elements.append("")
-        @tabsearch = ""
-      else
-        @tabsearch = elements.last.to_s
-        @tabstr = @tabstr[0...-@tabsearch.length]
-      end
-      i = elements.length - 1
-      if @tabsearch =~ /^-/
-        until i == 0
-          i -= 1
-          if elements[i] !~ /^-/
-            tab_switch(elements[i])
-            break
-          end
-        end
-      else
-        tab_all(@tabsearch)
-      end
-      @history_copy[@stk] = @tabstr.to_s + @tabsearch.to_s + @tabend.to_s
+      @tabsearch =~ /^-/ ? tabbing("switch") : tabbing("all")
+    when 'S-TAB'
+      tabbing("hist")
     when /^.$/
       @history_copy[@stk].insert(@pos,chr)
       @pos += 1
@@ -280,18 +262,32 @@ def getstr # A custom Readline-like function
   @history.insert(0, @history_copy[@stk])
   @history[0]
 end
-def tab_switch(str) # TAB completion for command switches (TAB after "-")
-  begin
-    hlp = `#{str} --help`
-    hlp = hlp.split("\n").grep(/^\s*-{1,2}[^-]/)
-    hlp = hlp.map {|h| h.sub(/^\s*/, '')}
-    switch = tabselect(hlp)
-    switch = switch.sub(/ .*/, '').sub(/,/, '')
-    @tabsearch.chop!
-    @tabsearch += switch
-    @pos = @tabstr.length + @tabsearch.length
-  rescue
+def tabbing(type)
+  @tabstr    = @history_copy[@stk][0...@pos]
+  @tabend    = @history_copy[@stk][@pos..]
+  elements   = @tabstr.split(" ")
+  if @tabstr.match(" $")
+    elements.append("")
+    @tabsearch = ""
+  else
+    @tabsearch = elements.last.to_s
+    @tabstr = @tabstr[0...-@tabsearch.length]
   end
+  i = elements.length - 1
+  if @tabsearch =~ /^-/
+    until i == 0
+      i -= 1
+      if elements[i] !~ /^-/
+        tab_switch(elements[i])
+        break
+      end
+    end
+  elsif type == 'all'
+    tab_all(@tabsearch)
+  elsif type == 'hist'
+    tab_hist(@tabsearch)
+  end
+  @history_copy[@stk] = @tabstr.to_s + @tabsearch.to_s + @tabend.to_s
 end
 def tab_all(str) # TAB completion for Dirs/files, nicks and commands
   exe = []
@@ -302,22 +298,41 @@ def tab_all(str) # TAB completion for Dirs/files, nicks and commands
   end
   exe.prepend(*@nick.keys)
   exe.prepend(*@gnick.keys)
-  compl       = exe.select {|s| s =~ Regexp.new("^" + str)}
-  fdir        = str
-  fdir       += "/" if Dir.exist?(fdir)
-  fdir       += "*"
+  compl      = exe.select {|s| s =~ Regexp.new("^" + str)}
+  fdir       = str
+  fdir      += "/" if Dir.exist?(fdir)
+  fdir      += "*"
   compl.prepend(*Dir.glob(fdir))
-  match       = tabselect(compl) unless compl.empty?
-  @tabsearch  = match if match
-  @pos        = @tabstr.length + @tabsearch.length if match
+  match      = tabselect(compl) unless compl.empty?
+  @tabsearch = match if match
+  @pos       = @tabstr.length + @tabsearch.length if match
 end
-def tabselect(ary) # Let user select from the incoming array
+def tab_switch(str) # TAB completion for command switches (TAB after "-")
+  begin
+    hlp = `#{str} --help`
+    hlp = hlp.split("\n").grep(/^\s*-{1,2}[^-]/)
+    hlp = hlp.map {|h| h.sub(/^\s*/, '')}
+    switch = tabselect(hlp)
+    switch = switch.sub(/ .*/, '').sub(/,/, '')
+    @tabsearch = switch if switch
+    @pos = @tabstr.length + @tabsearch.length
+  rescue
+  end
+end
+def tab_hist(str)
+  sel  = @history.select {|el| el =~ /#{str}/}
+  hist = tabselect(sel, true)
+  @tabsearch = hist if hist
+  @pos       = @tabstr.length + @tabsearch.length if hist
+end
+def tabselect(ary, hist=false) # Let user select from the incoming array
+  ary.uniq!
   @c_row, @c_col = @c.pos
   chr = ""
   i = 0
-  ary.length - i < 5 ? l = ary.length - i : l = 5
   while chr != "ENTER"
     @c.clear_screen_down
+    ary.length - i < 5 ? l = ary.length - i : l = 5
     l.times do |x|
       tl = @tabsearch.length
       if x == 0
@@ -327,14 +342,10 @@ def tabselect(ary) # Let user select from the incoming array
         print tabline # Full command line
         @c_col = @pos0 + @tabstr.length + tabchoice.length
         nextline
-        sel0 = " " + ary[i][0...tl]
-        sel1 = ary[i][tl...].c(@c_tabselect)
-        print sel0 + sel1   # Top option selected
+        print " " + ary[i].sub(/(.*?)#{@tabsearch}(.*)/, '\1'.c(@c_tabselect) + @tabsearch + '\2'.c(@c_tabselect))
       else
         begin
-          opt0 = " " + ary[i+x][0...tl]
-          opt1 = ary[i+x][tl...].c(@c_taboption)
-          print opt0 + opt1   # Next option unselected
+          print " " + ary[i+x].sub(/(.*?)#{@tabsearch}(.*)/, '\1'.c(@c_taboption) + @tabsearch + '\2'.c(@c_taboption))
         rescue
         end
       end
@@ -355,11 +366,11 @@ def tabselect(ary) # Let user select from the incoming array
       chr = "ENTER"
     when 'BACK'
       @tabsearch.chop! unless @tabsearch == ''
-      tab_all(@tabsearch)
+      hist ? tab_hist(@tabsearch) : tab_all(@tabsearch)
       return @tabsearch
     when /^[[:print:]]$/
       @tabsearch += chr
-      tab_all(@tabsearch)
+      hist ? tab_hist(@tabsearch) : tab_all(@tabsearch)
       return @tabsearch
     end
   end
@@ -387,7 +398,7 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
       el.c(@c_nick)
     elsif @gnick.include?(el)
       el.c(@c_gnick)
-    elsif File.exists?(el.sub(/^~/, "/home/#{@user}"))
+    elsif File.exist?(el.sub(/^~/, "/home/#{@user}"))
       el.c(@c_path)
     elsif system "which #{el}", %i[out err] => File::NULL
       el.c(@c_cmd)
@@ -414,6 +425,7 @@ def rshrc # Write updates to .rshrc
   File.write(Dir.home+'/.rshrc', conf)
   puts "\n .rshrc updated"
 end
+
 # RSH FUNCTIONS
 def history # Show history
   puts "History:"
@@ -489,20 +501,22 @@ loop do
       @cmd.sub!(/^cd (\S*).*/, '\1')
       @cmd = Dir.home if @cmd == "~"
       dir  = @cmd.strip.sub(/~/, Dir.home)
-      Dir.chdir(dir) if Dir.exists?(dir)
-      ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
-      @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
-      ga = @gnick.transform_keys {|k| /\b#{Regexp.escape k}\b/}
-      @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
-      puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
-      if @cmd == "fzf" # fzf integration (https://github.com/junegunn/fzf)
-        res = `#{@cmd}`.chomp
-        Dir.chdir(File.dirname(res))
+      if Dir.exists?(dir)
+        Dir.chdir(dir) 
       else
-        if File.exist?(@cmd) # Try to open file with user's editor
-          system("#{ENV['EDITOR']} #{@cmd}")
-        elsif system(@cmd) # Try execute the command
-        else puts "No such command: #{@cmd}"
+        ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
+        @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
+        ga = @gnick.transform_keys {|k| /\b#{Regexp.escape k}\b/}
+        @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
+        puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
+        if @cmd == "fzf" # fzf integration (https://github.com/junegunn/fzf)
+          res = `#{@cmd}`.chomp
+          Dir.chdir(File.dirname(res))
+        else
+          if File.exist?(@cmd) then system("#{ENV['EDITOR']} #{@cmd}") # Try open with user's editor
+          elsif system(@cmd) # Try execute the command
+          else puts "No such command: #{@cmd}"
+          end
         end
       end
     end
