@@ -494,6 +494,7 @@ loop do
     Dir.chdir(File.read("/tmp/.rshpwd"))
     next
   end
+  @cmd = "echo \"#{@cmd[1...]},prx,off\" | xrpn" if @cmd =~ /^\=/ # Integration with xrpn (https://github.com/isene/xrpn)
   begin
     if @cmd.match(/^\s*:/) # Ruby commands are prefixed with ":"
       eval(@cmd[1..-1])

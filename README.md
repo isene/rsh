@@ -34,7 +34,13 @@ You can tab complete almost anything. Hitting `TAB` will try to complete in this
 Hitting Shift-TAB will do a similar search through the command history - but with a general match of the search criteria (not only matching at the start).
 
 ## Integrations
-rsh is integrated with the [rtfm file manager](https://github.com/isene/RTFM) and with [fzf](https://github.com/junegunn/fzf). Just enter the command `r` and rtfm will be launched - and when you quit the file manager, you will drop back into rsh in the directory you where you exited rtfm. Enter the command `fzf` to launch the fuzzy finder - select the directory/file you want, press `ENTER` and you will find yourself in the directory where that item resides. 
+rsh is integrated with the [rtfm file manager](https://github.com/isene/RTFM), with [fzf](https://github.com/junegunn/fzf) and with the programming language [XRPN](https://github.com/isene/xrpn). 
+
+Just enter the command `r` and rtfm will be launched - and when you quit the file manager, you will drop back into rsh in the directory you where you exited rtfm. 
+
+Enter the command `fzf` to launch the fuzzy finder - select the directory/file you want, press `ENTER` and you will find yourself in the directory where that item resides. 
+
+If you start a line with "=", the rest of the line will be interpreted as an XRPN program. This gives you the full power of XRPN right at your fingertips. You can do simple stuff like this: `=13,23,*,x^2` and the answer to `(13 * 23)^2` will be given (89401) in the format that you have set in your `.xrpn/conf`. Or you can do more elaborate stuff like `=fix 6,5,sto c,time,'Time now is: ',atime,aview,pse,fix 0,lbl a,rcl c,prx,dse c,gto a`. Go crazy. Use single-quotes for any Alpha entry.
 
 ## Syntax highlighting
 rsh will highlight nicks, gnicks, commands and dirs/files as they are written on the command line.
