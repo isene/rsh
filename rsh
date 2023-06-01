@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.6"
+@version    = "0.7"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -423,7 +423,7 @@ def rshrc # Write updates to .rshrc
   conf.sub!(/^@history.*\n/, "") 
   conf += "@history = #{@history.last(@histsize)}\n"
   File.write(Dir.home+'/.rshrc', conf)
-  puts "\n .rshrc updated"
+  puts ".rshrc updated"
 end
 
 # RSH FUNCTIONS
@@ -480,24 +480,28 @@ end
 
 # MAIN PART
 loop do 
-  @user = Etc.getpwuid(Process.euid).name # For use in @prompt
-  @node = Etc.uname[:nodename]            # For use in @prompt
-  h = @history; load(Dir.home+'/.rshrc') if File.exist?(Dir.home+'/.rshrc'); @history = h # reload prompt but not history
-  @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
-  @cmd = getstr # Main work is here
-  hist_clean # Clean up the history
-  @cmd = "ls" if @cmd == "" # Default to ls when no command is given
-  print "\n"; @c.clear_screen_down
-  if @cmd == "r" # Integration with rtfm (https://github.com/isene/RTFM)
-    File.write("/tmp/.rshpwd", Dir.pwd)
-    system("rtfm /tmp/.rshpwd")
-    Dir.chdir(File.read("/tmp/.rshpwd"))
-    next
-  end
-  @cmd = "echo \"#{@cmd[1...]},prx,off\" | xrpn" if @cmd =~ /^\=/ # Integration with xrpn (https://github.com/isene/xrpn)
   begin
+    @user = Etc.getpwuid(Process.euid).name # For use in @prompt
+    @node = Etc.uname[:nodename]            # For use in @prompt
+    h = @history; load(Dir.home+'/.rshrc') if File.exist?(Dir.home+'/.rshrc'); @history = h # reload prompt but not history
+    @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
+    @cmd = getstr # Main work is here
+    hist_clean # Clean up the history
+    @cmd = "ls" if @cmd == "" # Default to ls when no command is given
+    print "\n"; @c.clear_screen_down
+    if @cmd == "r" # Integration with rtfm (https://github.com/isene/RTFM)
+      File.write("/tmp/.rshpwd", Dir.pwd)
+      system("rtfm /tmp/.rshpwd")
+      Dir.chdir(File.read("/tmp/.rshpwd"))
+      next
+    end
+    @cmd = "echo \"#{@cmd[1...]},prx,off\" | xrpn" if @cmd =~ /^\=/ # Integration with xrpn (https://github.com/isene/xrpn)
     if @cmd.match(/^\s*:/) # Ruby commands are prefixed with ":"
-      eval(@cmd[1..-1])
+      begin
+        eval(@cmd[1..-1])
+      rescue Exception => err
+        puts "#{err}"
+      end
     else # Execute command
       @cmd.sub!(/^cd (\S*).*/, '\1')
       @cmd = Dir.home if @cmd == "~"
@@ -510,7 +514,7 @@ loop do
         ga = @gnick.transform_keys {|k| /\b#{Regexp.escape k}\b/}
         @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
         puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
-        if @cmd == "fzf" # fzf integration (https://github.com/junegunn/fzf)
+        if @cmd == "f" # fzf integration (https://github.com/junegunn/fzf)
           res = `#{@cmd}`.chomp
           Dir.chdir(File.dirname(res))
         else
