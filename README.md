@@ -19,6 +19,9 @@ Or simply `gem install ruby-shell`.
 * Syntax highlighting, matching nicks, system commands and valid dirs/files
 * Tab completions for nicks, system commands, command switches and dirs/files
 * Tab completion presents matches in a list to pick from
+* When you start to write a command, rsh will suggest the first match in the
+  history and present that in "toned down" letters - press the arrow right key
+  to accept the suggestion.
 * History with simple editing
 * Config file (`.rshrc`) updates on exit
 * Set of simple rsh specific commands like `nick`, `nick?`, `history` and `rmhistory`

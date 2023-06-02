@@ -2,11 +2,11 @@
 # encoding: utf-8
 #
 # SCRIPT INFO 
-# Name:       RTFM - Ruby Terminal File Manager
+# Name:       rsh - Ruby SHell
 # Language:   Pure Ruby, best viewed in VIM
 # Author:     Geir Isene <g@isene.com>
 # Web_site:   http://isene.com/
-# Github:     https://github.com/isene/RTFM
+# Github:     https://github.com/isene/rsh
 # License:    I release all copyright claims. This code is in the public domain.
 #             Permission is granted to use, copy modify, distribute, and sell
 #             this software for any purpose. I make no guarantee about the
@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.8"
+@version    = "0.9"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -177,9 +177,10 @@ def getchr # Process key presses
   return chr
 end
 def getstr # A custom Readline-like function
-  @stk = 0
+  @stk  = 0
   @pos  = 0
-  chr  = ""
+  right = false
+  chr   = ""
   @history.insert(0, "")
   @history_copy = @history.map(&:clone)
   while chr != "ENTER" # Keep going with readline until user presses ENTER
@@ -188,6 +189,16 @@ def getstr # A custom Readline-like function
     print @prompt
     row, @pos0 = @c.pos
     print cmd_check(text)
+    begin
+      cmpl = @history[1..].find {|e| e =~ /^#{Regexp.escape(text)}/}
+      if text.length > 2 and cmpl
+        print cmpl[text.length..].to_s.c(@c_stamp)
+        right = true
+      else
+        right = false
+      end
+    rescue
+    end
     @c.col(@pos0 + @pos)
     chr = getchr
     return "\n" if chr == "C-G" # Ctrl-G escapes the reasdline
@@ -212,6 +223,10 @@ def getstr # A custom Readline-like function
         @pos = @history_copy[@stk].length
       end
     when 'RIGHT' # Move right on the readline
+      if right 
+        @history_copy[@stk] = cmpl 
+        @pos = @history_copy[@stk].length
+      end
       @pos += 1 unless @pos >= @history_copy[@stk].length
     when 'LEFT'  # Move left on the readline
       @pos -= 1 unless @pos <= 0
@@ -321,6 +336,7 @@ def tab_switch(str) # TAB completion for command switches (TAB after "-")
 end
 def tab_hist(str)
   sel  = @history.select {|el| el =~ /#{str}/}
+  sel.delete("")
   hist = tabselect(sel, true)
   @tabsearch = hist if hist
   @pos       = @tabstr.length + @tabsearch.length if hist
@@ -357,7 +373,7 @@ def tabselect(ary, hist=false) # Let user select from the incoming array
     case chr
     when 'C-G', 'C-C'
       @c.clear_screen_down
-      return ""
+      return @tabsearch
     when 'DOWN'
       i += 1 unless i > ary.length - 2
     when 'UP'
@@ -365,7 +381,11 @@ def tabselect(ary, hist=false) # Let user select from the incoming array
     when 'TAB'
       chr = "ENTER"
     when 'BACK'
-      @tabsearch.chop! unless @tabsearch == ''
+      if @tabsearch == ''
+        @c.clear_screen_down
+        return ""
+      end
+      @tabsearch.chop!
       hist ? tab_hist(@tabsearch) : tab_all(@tabsearch)
       return @tabsearch
     when /^[[:print:]]$/
@@ -499,8 +519,9 @@ loop do
     if @cmd.match(/^\s*:/) # Ruby commands are prefixed with ":"
       begin
         eval(@cmd[1..-1])
-      rescue Exception => err
-        puts "#{err}"
+      rescue StandardError => err
+      #rescue Exception => err
+        puts "\n#{err}"
       end
     else # Execute command
       @cmd.sub!(/^cd (\S*).*/, '\1')
@@ -526,7 +547,7 @@ loop do
       end
     end
   rescue StandardError => err # Throw error nicely
-    puts "#{err}"
+    puts "\n#{err}"
   end
 end
 
