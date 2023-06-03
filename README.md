@@ -15,18 +15,28 @@ Clone this repo and drop `rsh` into your preferred bin directory. Drop `.rshrc` 
 Or simply `gem install ruby-shell`.
 
 # Features
-* Aliases (called `nicks`in rsh) - both for commands and general nicks
+* Aliases (called nicks in rsh) - both for commands and general nicks
 * Syntax highlighting, matching nicks, system commands and valid dirs/files
 * Tab completions for nicks, system commands, command switches and dirs/files
 * Tab completion presents matches in a list to pick from
-* When you start to write a command, rsh will suggest the first match in the
-  history and present that in "toned down" letters - press the arrow right key
-  to accept the suggestion.
-* History with simple editing
-* Config file (`.rshrc`) updates on exit
-* Set of simple rsh specific commands like `nick`, `nick?`, `history` and `rmhistory`
-* rsh specific commands and full set of Ruby commands available via `:command`
-* All colors are themeable in `.rshrc`
+* When you start to write a command, rsh will suggest the first match in the history and present that in "toned down" letters - press the arrow right key to accept the suggestion.
+* History with editing, search
+* Config file (.rshrc) updates on exit (with Ctrl-d) or not (with Ctrl-c)
+* Set of simple rsh specific commands like nick, nick?, history and rmhistory
+* rsh specific commands and full set of Ruby commands available via :<command>
+* All colors are themeable in .rshrc (see github link for possibilities)
+  
+Special functions/integrations:
+* Use `r` to launch rtfm (https://github.com/isene/RTFM) - if you have it installed
+* Use `f` to launch fzf (https://github.com/junegunn/fzf) - if you have it installed
+* Use `=` followed by xrpn commands separated by commas (https://github.com/isene/xrpn)
+* Use `:` followed by a Ruby expression to access the whole world of Ruby
+
+Special commands:
+* `:nick 'll = ls -l'` to make a command alias (ll) point to a command (ls -l)
+* `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
+* `:nick?` will list all command nicks and general nicks (you can edit your nicks in .rshrc)
+* `:history` will list the command history, while `:rmhistory` will delete the history
 
 ## Nicks
 Add command nicks (aliases) with `:nick "some_nick = some_command"`, e.g. `:nick "ls = ls --color"`. Add general nicks that will substitute anything on a command line (not just commands) like this `:gnick "some_gnick = some_command"`, e.g. `:gnick "x = /home/user/somewhere"`. List (g)nicks with `:nick?`. Remove a nick with `:nick "-some_command"`, e.g. `:nick "-ls"` to remove an `ls` nick. Same for gnicks.

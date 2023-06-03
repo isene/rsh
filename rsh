@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.9"
+@version    = "0.10"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -130,6 +130,68 @@ begin # Initialization
 end
 
 # GENERIC FUNCTIONS
+def firstrun
+  @firstrun = <<~FIRSTRUN
+  Hello #{@user}, welcome to rsh - the Ruby SHell. 
+  
+  rsh does not attempt to compete with the grand old shells like bash and zsh. 
+  It serves the specific needs and wants of its author. If you like it, then feel free 
+  to ask for more or different features here: https://github.com/isene/rsh. Features:
+
+  * Aliases (called nicks in rsh) - both for commands and general nicks
+  * Syntax highlighting, matching nicks, system commands and valid dirs/files
+  * Tab completions for nicks, system commands, command switches and dirs/files
+  * Tab completion presents matches in a list to pick from
+  * When you start to write a command, rsh will suggest the first match in the history and
+    present that in "toned down" letters - press the arrow right key to accept the suggestion.
+  * History with editing, search
+  * Config file (.rshrc) updates on exit (with Ctrl-d) or not (with Ctrl-c)
+  * Set of simple rsh specific commands like nick, nick?, history and rmhistory
+  * rsh specific commands and full set of Ruby commands available via :<command>
+  * All colors are themeable in .rshrc (see github link for possibilities)
+  
+  Special functions/integrations:
+  * Use `r` to launch rtfm (https://github.com/isene/RTFM) - if you have it installed
+  * Use `f` to launch fzf (https://github.com/junegunn/fzf) - if you have it installed
+  * Use `=` followed by xrpn commands separated by commas (https://github.com/isene/xrpn)
+  * Use `:` followed by a Ruby expression to access the whole world of Ruby
+  Special commands:
+  * `:nick 'll = ls -l'` to make a command alias (ll) point to a command (ls -l)
+  * `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
+  * `:nick?` will list all command nicks and general nicks (you can edit your nicks in .rshrc)
+  * `:history` will list the command history, while `:rmhistory` will delete the history
+  
+  Since there is no rsh configuration file (.rshrc), I will help you set it up to suit your needs.
+FIRSTRUN
+
+  puts @firstrun
+  puts "The prompt you see now is the very basic rsh prompt: "
+  print "#{@prompt} (press ENTER)"
+  STDIN.gets
+  puts "I will now change the prompt into something more useful."
+  puts "Feel free to amend the prompt in your .rshrc."
+  rc = <<~RSHRC
+  # PROMPT
+  # The numbers in parenthesis are 256 color codes (the '.c()' is a String extention
+  # to color text in the terminal. Add '.b' for bold and '.i' for italics.
+  @prompt = "\#{@user}@\#{@node}".c(46) + ":".c(255) + " \#{Dir.pwd}/".c(196) + " ".c(7)
+
+  # THEME
+  @c_prompt    = 196  # Color for basic prompt
+  @c_cmd       = 48   # Color for valid command
+  @c_nick      = 51   # Color for matching nick
+  @c_gnick     = 87   # Color for matching gnick
+  @c_path      = 208  # Color for valid path
+  @c_switch    = 148  # Color for switches/options
+  @c_tabselect = 207  # Color for selected tabcompleted item
+  @c_taboption = 244  # Color for unselected tabcompleted item
+  @c_stamp     = 244  # Color for time stamp/command
+
+  @nick = {"ls"=>"ls --color -F"}
+RSHRC
+  File.write(Dir.home+'/.rshrc', rc)
+
+end
 def getchr # Process key presses
   c = STDIN.getch
   case c
@@ -487,7 +549,8 @@ end
 # INITIAL SETUP
 begin # Load .rshrc and populate @history
   trap "SIGINT" do print "\n"; exit end
-  load(Dir.home+'/.rshrc') if File.exist?(Dir.home+'/.rshrc') # Initial loading - to get history
+  firstrun unless File.exist?(Dir.home+'/.rshrc') # Initial loading - to get history
+  load(Dir.home+'/.rshrc') 
   @c = Cursor               # Initiate @c as Cursor
   @c.save                   # Get max row & col
   @c.row(8000)
@@ -510,9 +573,13 @@ loop do
     @cmd = "ls" if @cmd == "" # Default to ls when no command is given
     print "\n"; @c.clear_screen_down
     if @cmd == "r" # Integration with rtfm (https://github.com/isene/RTFM)
-      File.write("/tmp/.rshpwd", Dir.pwd)
-      system("rtfm /tmp/.rshpwd")
-      Dir.chdir(File.read("/tmp/.rshpwd"))
+      t  = Time.now
+      t0 = t.nsec.to_s
+      tf = "/tmp/.rshpwd" + t0
+      File.write(tf, Dir.pwd)
+      system("rtfm #{tf}")
+      Dir.chdir(File.read(tf))
+      File.delete(tf)
       next
     end
     @cmd = "echo \"#{@cmd[1...]},prx,off\" | xrpn" if @cmd =~ /^\=/ # Integration with xrpn (https://github.com/isene/xrpn)

@@ -1,7 +1,15 @@
-@prompt = "#{@user}@#{@node}".c(46) + ":".c(255) + " #{Dir.pwd}/".c(196) + " ".c(7)
-@nick = {"ls"=>"ls --color -F", "la"=>"ls -a --color -F", "ll"=>"ls -l --color -F", "l"=>"less"}
-@gnick = {}
-@history = []
+# vim: set ft=ruby sw=2 sts=2 et :
+
+# PROMPT
+# The numbers in parenthesis are 256 color codes (the '.c()' is a String extention
+# to color text in the terminal. Add '.b' for bold and '.i' for italics.
+if @user == "root"
+  @prompt = "#{@user}@#{@node}".c(160) + ":".c(255) + " #{Dir.pwd}/".c(196) + " ".c(7)
+else
+  @prompt = "#{@user}@#{@node}".c(46) + ":".c(255) + " #{Dir.pwd}/".c(196) + " ".c(7)
+end
+
+# THEME
 @c_prompt    = 196  # Color for basic prompt
 @c_cmd       = 48   # Color for valid command
 @c_nick      = 51   # Color for matching nick
@@ -10,4 +18,7 @@
 @c_switch    = 148  # Color for switches/options
 @c_tabselect = 207  # Color for selected tabcompleted item
 @c_taboption = 244  # Color for unselected tabcompleted item
+@c_stamp     = 244  # Color for time stamp/command
 
+# UPDATED ON CTRL-D EXIT
+@nick = {"ls"=>"ls --color -F"}
