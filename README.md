@@ -73,6 +73,9 @@ Variable        | Description
 `@c_taboption`  | Color for unselected tabcompleted item
 `@c_stamp`      | Color for time stamp/command
 
+# Open files
+If you press `ENTER` after writing or tab-completing to a file, rsh will try to open the file in the user's EDITOR of choice (if it is a valid text file) or use `xdg-open` to open the file using the correct program. If you, for some reason want to use `run-mailcap` instead of `xdg-open` as the file opener, simply add `@runmailcap = true` to your `.rshrc`.
+
 # Enter the world of Ruby
 By entering `:some-ruby-command` you have full access to the Ruby universe right from your command line. You can do anything from `:puts 2 + 13` or `:if 0.7 > Math::sin(34) then puts "OK" end` or whatever tickles you fancy.
 

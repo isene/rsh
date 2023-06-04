@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.11"
+@version    = "0.12"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -125,6 +125,8 @@ begin # Initialization
   # History
   @histsize    = 100                      # Max history if not set in .rshrc
   @hloaded     = false                    # Variable to determine if history is loaded
+  # Use run-mailcap instead of xgd-open? Set = true in .rshrc if iyou want run-mailcap
+  @runmailcap  = false
   # Variable initializations
   @cmd         = ""                       # Initiate variable @cmd
 end
@@ -611,7 +613,16 @@ loop do
           res = `#{@cmd}`.chomp
           Dir.chdir(File.dirname(res))
         else
-          if File.exist?(@cmd) then system("#{ENV['EDITOR']} #{@cmd}") # Try open with user's editor
+          if File.exist?(@cmd)
+            if File.read(@cmd).force_encoding("UTF-8").valid_encoding?
+              system("#{ENV['EDITOR']} #{@cmd}") # Try open with user's editor
+            else
+              if @runmailcap
+                Thread.new { system("run-mailcap #{@cmd} 2>/dev/null") }
+              else
+                Thread.new { system("xdg-open #{@cmd} 2>/dev/null") }
+              end
+            end
           elsif system(@cmd) # Try execute the command
           else puts "No such command: #{@cmd}"
           end
