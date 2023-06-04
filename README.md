@@ -37,6 +37,7 @@ Special commands:
 * `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
 * `:nick?` will list all command nicks and general nicks (you can edit your nicks in .rshrc)
 * `:history` will list the command history, while `:rmhistory` will delete the history
+* `:help` will display this help text
 
 ## Nicks
 Add command nicks (aliases) with `:nick "some_nick = some_command"`, e.g. `:nick "ls = ls --color"`. Add general nicks that will substitute anything on a command line (not just commands) like this `:gnick "some_gnick = some_command"`, e.g. `:gnick "x = /home/user/somewhere"`. List (g)nicks with `:nick?`. Remove a nick with `:nick "-some_command"`, e.g. `:nick "-ls"` to remove an `ls` nick. Same for gnicks.

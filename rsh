@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.10"
+@version    = "0.11"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -129,9 +129,9 @@ begin # Initialization
   @cmd         = ""                       # Initiate variable @cmd
 end
 
-# GENERIC FUNCTIONS
-def firstrun
-  @firstrun = <<~FIRSTRUN
+# HELP TEXT
+@help = <<~HELP
+
   Hello #{@user}, welcome to rsh - the Ruby SHell. 
   
   rsh does not attempt to compete with the grand old shells like bash and zsh. 
@@ -160,16 +160,19 @@ def firstrun
   * `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
   * `:nick?` will list all command nicks and general nicks (you can edit your nicks in .rshrc)
   * `:history` will list the command history, while `:rmhistory` will delete the history
+  * `:help` will display this help text
   
-  Since there is no rsh configuration file (.rshrc), I will help you set it up to suit your needs.
-FIRSTRUN
+HELP
 
-  puts @firstrun
-  puts "The prompt you see now is the very basic rsh prompt: "
+# GENERIC FUNCTIONS
+def firstrun
+  puts @help
+  puts "Since there is no rsh configuration file (.rshrc), I will help you set it up to suit your needs.\n\n"
+  puts "The prompt you see now is the very basic rsh prompt:"
   print "#{@prompt} (press ENTER)"
   STDIN.gets
-  puts "I will now change the prompt into something more useful."
-  puts "Feel free to amend the prompt in your .rshrc."
+  puts "\nI will now change the prompt into something more useful."
+  puts "Feel free to amend the prompt in your .rshrc.\n\n"
   rc = <<~RSHRC
   # PROMPT
   # The numbers in parenthesis are 256 color codes (the '.c()' is a String extention
@@ -190,7 +193,6 @@ FIRSTRUN
   @nick = {"ls"=>"ls --color -F"}
 RSHRC
   File.write(Dir.home+'/.rshrc', rc)
-
 end
 def getchr # Process key presses
   c = STDIN.getch
@@ -509,6 +511,9 @@ def rshrc # Write updates to .rshrc
 end
 
 # RSH FUNCTIONS
+def help
+  puts @help
+end
 def history # Show history
   puts "History:"
   puts @history
