@@ -594,7 +594,7 @@ loop do
       @cmd.sub!(/^cd (\S*).*/, '\1')
       @cmd = Dir.home if @cmd == "~"
       dir  = @cmd.strip.sub(/~/, Dir.home)
-      if Dir.exists?(dir)
+      if Dir.exist?(dir)
         Dir.chdir(dir) 
       else
         ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
