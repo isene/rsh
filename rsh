@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.12"
+@version    = "0.13"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -587,14 +587,15 @@ loop do
       system("rtfm #{tf}")
       Dir.chdir(File.read(tf))
       File.delete(tf)
+      system("git status .") if Dir.exist?(".git")
       next
     end
     @cmd = "echo \"#{@cmd[1...]},prx,off\" | xrpn" if @cmd =~ /^\=/ # Integration with xrpn (https://github.com/isene/xrpn)
     if @cmd.match(/^\s*:/) # Ruby commands are prefixed with ":"
       begin
         eval(@cmd[1..-1])
-      rescue StandardError => err
-      #rescue Exception => err
+      #rescue StandardError => err
+      rescue Exception => err
         puts "\n#{err}"
       end
     else # Execute command
@@ -603,6 +604,7 @@ loop do
       dir  = @cmd.strip.sub(/~/, Dir.home)
       if Dir.exist?(dir)
         Dir.chdir(dir) 
+        system("git status .") if Dir.exist?(".git")
       else
         ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
         @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
