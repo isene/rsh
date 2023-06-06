@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.13"
+@version    = "0.14"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -128,7 +128,7 @@ begin # Initialization
   # Use run-mailcap instead of xgd-open? Set = true in .rshrc if iyou want run-mailcap
   @runmailcap  = false
   # Variable initializations
-  @cmd         = ""                       # Initiate variable @cmd
+  @dirs        = ["."]*10
 end
 
 # HELP TEXT
@@ -245,30 +245,27 @@ end
 def getstr # A custom Readline-like function
   @stk  = 0
   @pos  = 0
-  right = false
   chr   = ""
   @history.insert(0, "")
-  @history_copy = @history.map(&:clone)
   while chr != "ENTER" # Keep going with readline until user presses ENTER
-    text = @history_copy[@stk]
+    @ci   = nil
+    right = false
     @c.clear_line
     print @prompt
     row, @pos0 = @c.pos
-    print cmd_check(text)
-    begin
-      cmpl = @history[1..].find {|e| e =~ /^#{Regexp.escape(text)}/}
-      if text.length > 2 and cmpl
-        print cmpl[text.length..].to_s.c(@c_stamp)
-        right = true
-      else
-        right = false
-      end
-    rescue
+    print cmd_check(@history[0])
+    @ci  = @history[1..].find_index {|e| e =~ /^#{Regexp.escape(@history[0])}/}
+    @ci += 1 unless @ci == nil
+    if @history[0].length > 2 and @ci
+      print @history[@ci][@history[0].length..].to_s.c(@c_stamp)
+      right = true
     end
     @c.col(@pos0 + @pos)
     chr = getchr
-    return "\n" if chr == "C-G" # Ctrl-G escapes the reasdline
     case chr
+    when 'C-G'
+      @history[0] = "" 
+      return
     when 'C-C'   # Ctrl-C exits gracefully but without updating .rshrc
       print "\n"
       exit
@@ -279,69 +276,76 @@ def getstr # A custom Readline-like function
       @c.row(1)
       @c.clear_screen_down
     when 'UP'    # Go up in history
-      unless @stk >= @history_copy.length - 1
+      unless @stk >= @history.length - 1
         @stk += 1 
-        @pos = @history_copy[@stk].length
+        @history[0] = @history[@stk].dup
+        @pos = @history[0].length
       end
     when 'DOWN'  # Go down in history
-      unless @stk == 0
+      if @stk == 0
+        @history[0] = ""
+        @pos = 0
+      elsif @stk == 1
         @stk -= 1 
-        @pos = @history_copy[@stk].length
+        @history[0] = ""
+        @pos = 0
+      else
+        @stk -= 1 
+        @history[0] = @history[@stk].dup
+        @pos = @history[0].length
       end
     when 'RIGHT' # Move right on the readline
       if right 
-        @history_copy[@stk] = cmpl 
-        @pos = @history_copy[@stk].length
+        @history[0] = @history[@ci].dup
+        @pos = @history[0].length
       end
-      @pos += 1 unless @pos >= @history_copy[@stk].length
+      @pos += 1 unless @pos >= @history[0].length
     when 'LEFT'  # Move left on the readline
       @pos -= 1 unless @pos <= 0
     when 'HOME'  # Go to beginning of the readline
       @pos = 0
     when 'END'   # Go to the end of the readline
-      @pos = @history_copy[@stk].length
+      @pos = @history[0].length
     when 'DEL'   # Delete one character
-      @history_copy[@stk][@pos] = ""
+      @history[0][@pos] = ""
     when 'BACK'  # Delete one character to the left
       unless @pos <= 0
         @pos -= 1
-        @history_copy[@stk][@pos] = ""
+        @history[0][@pos] = ""
       end
     when 'WBACK' # Delete one word to the left (Ctrl-W)
       unless @pos == @pos0
-        until @history_copy[@stk][@pos - 1] == " " or @pos == 0
+        until @history[0][@pos - 1] == " " or @pos == 0
           @pos -= 1
-          @history_copy[@stk][@pos] = ""
+          @history[0][@pos] = ""
         end
-        if @history_copy[@stk][@pos - 1] == " "
+        if @history[0][@pos - 1] == " "
           @pos -= 1
-          @history_copy[@stk][@pos] = ""
+          @history[0][@pos] = ""
         end
       end
     when 'C-K'   # Kill/delete that entry in the history
-      @history_copy.delete_at(@stk)
       @history.delete_at(@stk)
       @stk -= 1
-      @pos  = @history_copy[@stk].length
+      @history[0] = @history[@stk].dup
+      @pos = @history[0].length
     when 'LDEL'  # Delete readline (Ctrl-U)
-      @history_copy[@stk] = ""
+      @history[0] = ""
       @pos = 0
     when 'TAB'   # Tab completion of dirs and files
       @tabsearch =~ /^-/ ? tabbing("switch") : tabbing("all")
     when 'S-TAB'
       tabbing("hist")
     when /^.$/
-      @history_copy[@stk].insert(@pos,chr)
+      @history[0].insert(@pos,chr)
       @pos += 1
     end
     while STDIN.ready?
       chr = STDIN.getc
-      @history_copy[@stk].insert(@pos,chr)
+      @history[0].insert(@pos,chr)
       @pos += 1
     end
   end
-  @history.insert(0, @history_copy[@stk])
-  @history[0]
 end
 def tabbing(type)
   @tabstr    = @history_copy[@stk][0...@pos]
@@ -552,6 +556,12 @@ def nick? # Show nicks
   puts "  General nicks:".c(@c_gnick)
   @gnick.each {|key, value| puts "  #{key} = #{value}"}
 end
+def dirs
+  puts "Past direactories:"
+  @dirs.each_with_index do |e,i|
+    puts "#{i}: #{e}"
+  end
+end
 
 # INITIAL SETUP
 begin # Load .rshrc and populate @history
@@ -575,7 +585,10 @@ loop do
     @node = Etc.uname[:nodename]            # For use in @prompt
     h = @history; load(Dir.home+'/.rshrc') if File.exist?(Dir.home+'/.rshrc'); @history = h # reload prompt but not history
     @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
-    @cmd = getstr # Main work is here
+    getstr # Main work is here
+    @cmd = @history[0]
+    @dirs.unshift(Dir.pwd)
+    @dirs.pop
     hist_clean # Clean up the history
     @cmd = "ls" if @cmd == "" # Default to ls when no command is given
     print "\n"; @c.clear_screen_down
@@ -598,18 +611,22 @@ loop do
       rescue Exception => err
         puts "\n#{err}"
       end
+    elsif @cmd == '#'
+      dirs
     else # Execute command
+      ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
+      @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
+      ga = @gnick.transform_keys {|k| /\b#{Regexp.escape k}\b/}
+      @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
       @cmd.sub!(/^cd (\S*).*/, '\1')
       @cmd = Dir.home if @cmd == "~"
+      @cmd = @dirs[1] if @cmd == "-"
+      @cmd = @dirs[@cmd.to_i] if @cmd =~ /^\d$/
       dir  = @cmd.strip.sub(/~/, Dir.home)
       if Dir.exist?(dir)
         Dir.chdir(dir) 
         system("git status .") if Dir.exist?(".git")
       else
-        ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
-        @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
-        ga = @gnick.transform_keys {|k| /\b#{Regexp.escape k}\b/}
-        @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
         puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
         if @cmd == "f" # fzf integration (https://github.com/junegunn/fzf)
           res = `#{@cmd}`.chomp
