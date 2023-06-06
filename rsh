@@ -348,8 +348,8 @@ def getstr # A custom Readline-like function
   end
 end
 def tabbing(type)
-  @tabstr    = @history_copy[@stk][0...@pos]
-  @tabend    = @history_copy[@stk][@pos..]
+  @tabstr    = @history[@stk][0...@pos]
+  @tabend    = @history[@stk][@pos..]
   elements   = @tabstr.split(" ")
   if @tabstr.match(" $")
     elements.append("")
@@ -372,7 +372,7 @@ def tabbing(type)
   elsif type == 'hist'
     tab_hist(@tabsearch)
   end
-  @history_copy[@stk] = @tabstr.to_s + @tabsearch.to_s + @tabend.to_s
+  @history[@stk] = @tabstr.to_s + @tabsearch.to_s + @tabend.to_s
 end
 def tab_all(str) # TAB completion for Dirs/files, nicks and commands
   exe = []
