@@ -39,6 +39,9 @@ Special commands:
 * `:history` will list the command history, while `:rmhistory` will delete the history
 * `:help` will display this help text
 
+## Screencast
+[![rsh screencast](/img/rsh-screencast.png)](https://youtu.be/4P2z8oSo1u4)
+
 ## Moving around
 While you `cd` around to different directories, you can see the last 10 directories visited via the command `:dirs` or the convenient shortcut `#`. Entering the number in the list (like `6` and ENTER) will jump you to that directory. Entering `-` will jump you back to the previous dir (equivalent of `1`. Entering `~` will get you to your home dir. If you want to bookmark a special directory, you can do that via a general nick like this: `:gnick "x = /path/to/a/dir/"` - this would bookmark the directory to the single letter `x`.
 

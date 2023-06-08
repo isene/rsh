@@ -517,6 +517,8 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
       el.c(@c_path)
     elsif system "which #{el}", %i[out err] => File::NULL
       el.c(@c_cmd)
+    elsif el == "cd"
+      el.c(@c_cmd)
     elsif el =~ /^-/
       el.c(@c_switch)
     else
@@ -644,6 +646,7 @@ loop do
       @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
       ga = @gnick.transform_keys {|k| /\b#{Regexp.escape k}\b/}
       @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
+      @cmd = "~" if @cmd == "cd"
       @cmd.sub!(/^cd (\S*).*/, '\1')
       @cmd = Dir.home if @cmd == "~"
       @cmd = @dirs[1] if @cmd == "-"
@@ -655,7 +658,7 @@ loop do
       else
         puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
         if @cmd == "f" # fzf integration (https://github.com/junegunn/fzf)
-          res = `#{@cmd}`.chomp
+          res = `fzf`.chomp
           Dir.chdir(File.dirname(res))
         else
           if File.exist?(@cmd)
