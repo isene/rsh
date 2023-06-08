@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.14"
+@version    = "0.15"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -246,9 +246,10 @@ def getstr # A custom Readline-like function
   @stk  = 0
   @pos  = 0
   chr   = ""
-  @history.insert(0, "")
+  @history.unshift("")
   while chr != "ENTER" # Keep going with readline until user presses ENTER
     @ci   = nil
+    lift  = false
     right = false
     @c.clear_line
     print @prompt
@@ -276,12 +277,23 @@ def getstr # A custom Readline-like function
       @c.row(1)
       @c.clear_screen_down
     when 'UP'    # Go up in history
+      if lift
+        @history.unshift("")
+        @history[0] = @history[@stk].dup
+        @stk += 1 
+      end
       unless @stk >= @history.length - 1
         @stk += 1 
         @history[0] = @history[@stk].dup
         @pos = @history[0].length
       end
+      lift = false
     when 'DOWN'  # Go down in history
+      if lift
+        @history.unshift("")
+        @history[0] = @history[@stk].dup
+        @stk += 1 
+      end
       if @stk == 0
         @history[0] = ""
         @pos = 0
@@ -294,8 +306,14 @@ def getstr # A custom Readline-like function
         @history[0] = @history[@stk].dup
         @pos = @history[0].length
       end
+      lift = false
     when 'RIGHT' # Move right on the readline
       if right 
+        if lift
+          @history.unshift("")
+          @history[0] = @history[@stk].dup
+          @stk += 1 
+        end
         @history[0] = @history[@ci].dup
         @pos = @history[0].length
       end
@@ -308,11 +326,13 @@ def getstr # A custom Readline-like function
       @pos = @history[0].length
     when 'DEL'   # Delete one character
       @history[0][@pos] = ""
+      lift = true
     when 'BACK'  # Delete one character to the left
       unless @pos <= 0
         @pos -= 1
         @history[0][@pos] = ""
       end
+      lift = true
     when 'WBACK' # Delete one word to the left (Ctrl-W)
       unless @pos == @pos0
         until @history[0][@pos - 1] == " " or @pos == 0
@@ -324,6 +344,7 @@ def getstr # A custom Readline-like function
           @history[0][@pos] = ""
         end
       end
+      lift = true
     when 'C-K'   # Kill/delete that entry in the history
       @history.delete_at(@stk)
       @stk -= 1
@@ -332,13 +353,17 @@ def getstr # A custom Readline-like function
     when 'LDEL'  # Delete readline (Ctrl-U)
       @history[0] = ""
       @pos = 0
+      lift = true
     when 'TAB'   # Tab completion of dirs and files
       @tabsearch =~ /^-/ ? tabbing("switch") : tabbing("all")
+      lift = true
     when 'S-TAB'
       tabbing("hist")
+      lift = true
     when /^.$/
       @history[0].insert(@pos,chr)
       @pos += 1
+      lift = true
     end
     while STDIN.ready?
       chr = STDIN.getc
@@ -585,6 +610,7 @@ loop do
     @node = Etc.uname[:nodename]            # For use in @prompt
     h = @history; load(Dir.home+'/.rshrc') if File.exist?(Dir.home+'/.rshrc'); @history = h # reload prompt but not history
     @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
+    system("printf \"\033]0;rsh: #{Dir.pwd}\007\"")   # Set Window title to path 
     getstr # Main work is here
     @cmd = @history[0]
     @dirs.unshift(Dir.pwd)
