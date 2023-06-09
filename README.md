@@ -14,13 +14,16 @@ Clone this repo and drop `rsh` into your preferred bin directory. Drop `.rshrc` 
 
 Or simply `gem install ruby-shell`.
 
+# Screencast
+[![rsh screencast](/img/rsh-screencast.png)](https://youtu.be/4P2z8oSo1u4)
+
 # Features
 * Aliases (called nicks in rsh) - both for commands and general nicks
 * Syntax highlighting, matching nicks, system commands and valid dirs/files
 * Tab completions for nicks, system commands, command switches and dirs/files
 * Tab completion presents matches in a list to pick from
 * When you start to write a command, rsh will suggest the first match in the history and present that in "toned down" letters - press the arrow right key to accept the suggestion.
-* History with editing, search
+* History with editing, search and repeat a history command (with `!`)
 * Config file (.rshrc) updates on exit (with Ctrl-d) or not (with Ctrl-c)
 * Set of simple rsh specific commands like nick, nick?, history and rmhistory
 * rsh specific commands and full set of Ruby commands available via :<command>
@@ -37,10 +40,8 @@ Special commands:
 * `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
 * `:nick?` will list all command nicks and general nicks (you can edit your nicks in .rshrc)
 * `:history` will list the command history, while `:rmhistory` will delete the history
+* `:version` Shows the rsh version number and the last published gem file version
 * `:help` will display this help text
-
-## Screencast
-[![rsh screencast](/img/rsh-screencast.png)](https://youtu.be/4P2z8oSo1u4)
 
 ## Moving around
 While you `cd` around to different directories, you can see the last 10 directories visited via the command `:dirs` or the convenient shortcut `#`. Entering the number in the list (like `6` and ENTER) will jump you to that directory. Entering `-` will jump you back to the previous dir (equivalent of `1`. Entering `~` will get you to your home dir. If you want to bookmark a special directory, you can do that via a general nick like this: `:gnick "x = /path/to/a/dir/"` - this would bookmark the directory to the single letter `x`.
@@ -52,6 +53,12 @@ Add command nicks (aliases) with `:nick "some_nick = some_command"`, e.g. `:nick
 You can tab complete almost anything. Hitting `TAB` will try to complete in this priority: nicks, gnicks, commands, dirs/files. Hitting `TAB`after a `-` will list the command switches for the preceding command with a short explanation (from the command's --help), like this `ls -`(`TAB`) will list all the switches/options for the `ls` command. You can add to (or subtract from) the search criteria while selecting possible matches - hit any letter to specify the search, while backspace removes a letter from the search criteria. 
 
 Hitting Shift-TAB will do a similar search through the command history - but with a general match of the search criteria (not only matching at the start).
+
+## Open files
+If you press `ENTER` after writing or tab-completing to a file, rsh will try to open the file in the user's EDITOR of choice (if it is a valid text file) or use `xdg-open` to open the file using the correct program. If you, for some reason want to use `run-mailcap` instead of `xdg-open` as the file opener, simply add `@runmailcap = true` to your `.rshrc`.
+
+## History
+Show the history with `:history`. Redo a history command with an exclamation mark and the number corresponding to the position in the history, like `!5` would do the 5th history command again.
 
 ## Integrations
 rsh is integrated with the [rtfm file manager](https://github.com/isene/RTFM), with [fzf](https://github.com/junegunn/fzf) and with the programming language [XRPN](https://github.com/isene/xrpn). 
@@ -78,9 +85,6 @@ Variable        | Description
 `@c_tabselect`  | Color for selected tabcompleted item
 `@c_taboption`  | Color for unselected tabcompleted item
 `@c_stamp`      | Color for time stamp/command
-
-# Open files
-If you press `ENTER` after writing or tab-completing to a file, rsh will try to open the file in the user's EDITOR of choice (if it is a valid text file) or use `xdg-open` to open the file using the correct program. If you, for some reason want to use `run-mailcap` instead of `xdg-open` as the file opener, simply add `@runmailcap = true` to your `.rshrc`.
 
 # Enter the world of Ruby
 By entering `:some-ruby-command` you have full access to the Ruby universe right from your command line. You can do anything from `:puts 2 + 13` or `:if 0.7 > Math::sin(34) then puts "OK" end` or whatever tickles you fancy.

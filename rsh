@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.15"
+@version    = "0.16"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -146,7 +146,7 @@ end
   * Tab completion presents matches in a list to pick from
   * When you start to write a command, rsh will suggest the first match in the history and
     present that in "toned down" letters - press the arrow right key to accept the suggestion.
-  * History with editing, search
+  * History with editing, search and repeat a history command (with `!`)
   * Config file (.rshrc) updates on exit (with Ctrl-d) or not (with Ctrl-c)
   * Set of simple rsh specific commands like nick, nick?, history and rmhistory
   * rsh specific commands and full set of Ruby commands available via :<command>
@@ -162,6 +162,7 @@ end
   * `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
   * `:nick?` will list all command nicks and general nicks (you can edit your nicks in .rshrc)
   * `:history` will list the command history, while `:rmhistory` will delete the history
+  * `:version` Shows the rsh version number and the last published gem file version
   * `:help` will display this help text
   
 HELP
@@ -547,9 +548,12 @@ end
 def help
   puts @help
 end
+def version
+  puts "rsh version = #{@version} (latest RubyGems version is #{Gem.latest_version_for("ruby-shell").version} - https://github.com/isene/rsh)"
+end
 def history # Show history
   puts "History:"
-  puts @history
+  @history.each_with_index {|h,i| puts i.to_s + "; " + h}
 end
 def rmhistory # Delete history
   @history = []
@@ -619,6 +623,10 @@ loop do
     @dirs.pop
     hist_clean # Clean up the history
     @cmd = "ls" if @cmd == "" # Default to ls when no command is given
+    if @cmd.match(/^!\d+/)
+      hi = @history[@cmd.sub(/^!(\d+)$/, '\1').to_i+1] 
+      @cmd = hi if hi
+    end
     print "\n"; @c.clear_screen_down
     if @cmd == "r" # Integration with rtfm (https://github.com/isene/RTFM)
       t  = Time.now
@@ -639,7 +647,7 @@ loop do
       rescue Exception => err
         puts "\n#{err}"
       end
-    elsif @cmd == '#'
+    elsif @cmd == '#' # List previous directories
       dirs
     else # Execute command
       ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
