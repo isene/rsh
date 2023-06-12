@@ -89,10 +89,14 @@ Variable        | Description
 ## The .rshrc
 `.rshrc` is the configuration file for rsh and it is located in your home directory. It is created when you first start rsh and you can modify it to suit your needs. A more detailed .rshrc is found in the the [rsh github repo](https://github.com/isene/rsh) - you can drop this into your home dir if you like. Set the basic environment variables like this:
 ```
-@editor   = "vim"
+ENV["EDITOR"]   = "vim"
+ENV["MANPAGER"] = "vim +MANPAGER -"
+```
+Also, a special variable for better LS_COLOR setup:
+```
 @lscolors = "/home/geir/.local/share/lscolors.sh"
 ```
-The `@editor` sets your editor of choice. The `@lscolors` points to a file that sets your LS_COLORS variable. Use [my extended LS_COLORS setup](https://github.com/isene/LS_COLORS) to make this really fancy.
+Point `@lscolors` to a file that sets your LS_COLORS variable. Use [my extended LS_COLORS setup](https://github.com/isene/LS_COLORS) to make this really fancy.
 
 You can add any Ruby code to your .rshrc.
 
