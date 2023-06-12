@@ -86,6 +86,16 @@ Variable        | Description
 `@c_taboption`  | Color for unselected tabcompleted item
 `@c_stamp`      | Color for time stamp/command
 
+## The .rshrc
+`.rshrc` is the configuration file for rsh and it is located in your home directory. It is created when you first start rsh and you can modify it to suit your needs. A more detailed .rshrc is found in the the [rsh github repo](https://github.com/isene/rsh) - you can drop this into your home dir if you like. Set the basic environment variables like this:
+```
+@editor   = "vim"
+@lscolors = "/home/geir/.local/share/lscolors.sh"
+```
+The `@editor` sets your editor of choice. The `@lscolors` points to a file that sets your LS_COLORS variable. Use [my extended LS_COLORS setup](https://github.com/isene/LS_COLORS) to make this really fancy.
+
+You can add any Ruby code to your .rshrc.
+
 # Enter the world of Ruby
 By entering `:some-ruby-command` you have full access to the Ruby universe right from your command line. You can do anything from `:puts 2 + 13` or `:if 0.7 > Math::sin(34) then puts "OK" end` or whatever tickles you fancy.
 

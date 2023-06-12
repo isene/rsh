@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.17"
+@version    = "0.19"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -422,7 +422,7 @@ def tab_switch(str) # TAB completion for command switches (TAB after "-")
   begin
     hlp = `#{str} --help`
     hlp = hlp.split("\n").grep(/^\s*-{1,2}[^-]/)
-    hlp = hlp.map {|h| h.sub(/^\s*/, '')}
+    hlp = hlp.map{|h| h.sub(/^\s*/, '').sub(/^--/, '    --')}
     switch = tabselect(hlp)
     switch = switch.sub(/ .*/, '').sub(/,/, '')
     @tabsearch = switch if switch
@@ -551,9 +551,9 @@ end
 def version
   puts "rsh version = #{@version} (latest RubyGems version is #{Gem.latest_version_for("ruby-shell").version} - https://github.com/isene/rsh)"
 end
-def history # Show history
+def history # Show most recent history (up to 50 entries)
   puts "History:"
-  @history.each_with_index {|h,i| puts i.to_s + "; " + h}
+  @history.each_with_index {|h,i| puts i.to_s + "; " + h if i < 50}
 end
 def rmhistory # Delete history
   @history = []
@@ -599,6 +599,13 @@ begin # Load .rshrc and populate @history
   trap "SIGINT" do print "\n"; exit end
   firstrun unless File.exist?(Dir.home+'/.rshrc') # Initial loading - to get history
   load(Dir.home+'/.rshrc') 
+  ENV["EDITOR"] = @editor
+  if File.exist?(@lscolors)
+    ls = File.read(@lscolors) 
+    ls.sub!(/export.*/, '')
+    ls.sub!(/^LS_COLORS=/, 'ENV["LS_COLORS"]=')
+    eval(ls)
+  end
   @c = Cursor               # Initiate @c as Cursor
   @c.save                   # Get max row & col
   @c.row(8000)
