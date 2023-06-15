@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.20"
+@version    = "0.21"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -145,8 +145,10 @@ end
   * Tab completions for nicks, system commands, command switches and dirs/files
   * Tab completion presents matches in a list to pick from
   * When you start to write a command, rsh will suggest the first match in the history and
-    present that in "toned down" letters - press the arrow right key to accept the suggestion.
-  * History with editing, search and repeat a history command (with `!`)
+    present that in "toned down" letters - press the arrow right key to accept the suggestion
+  * Writing a partial command and pressing `UP` will search history for matches.
+    Go down/up in the list and press `TAB` or `ENTER` to accept or `Ctrl-G` to discard
+* History with editing, search and repeat a history command (with `!`)
   * Config file (.rshrc) updates on exit (with Ctrl-d) or not (with Ctrl-c)
   * Set of simple rsh specific commands like nick, nick?, history and rmhistory
   * rsh specific commands and full set of Ruby commands available via :<command>
@@ -278,17 +280,22 @@ def getstr # A custom Readline-like function
       @c.row(1)
       @c.clear_screen_down
     when 'UP'    # Go up in history
-      if lift
-        @history.unshift("")
-        @history[0] = @history[@stk].dup
-        @stk += 1 
+      if @stk == 0 and @history[0].length > 0
+        @tabsearch = @history[0]
+        tabbing("hist")
+      else
+        if lift
+          @history.unshift("")
+          @history[0] = @history[@stk].dup
+          @stk += 1 
+        end
+        unless @stk >= @history.length - 1
+          @stk += 1 
+          @history[0] = @history[@stk].dup
+          @pos = @history[0].length
+        end
+        lift = false
       end
-      unless @stk >= @history.length - 1
-        @stk += 1 
-        @history[0] = @history[@stk].dup
-        @pos = @history[0].length
-      end
-      lift = false
     when 'DOWN'  # Go down in history
       if lift
         @history.unshift("")
@@ -434,8 +441,11 @@ def tab_hist(str)
   sel  = @history.select {|el| el =~ /#{str}/}
   sel.delete("")
   hist = tabselect(sel, true)
-  @tabsearch = hist if hist
-  @pos       = @tabstr.length + @tabsearch.length if hist
+  if hist
+    @tabsearch = hist 
+    @tabstr    = ""
+    @pos       = @tabsearch.length
+  end
 end
 def tabselect(ary, hist=false) # Let user select from the incoming array
   ary.uniq!
@@ -690,7 +700,7 @@ loop do
               end
             end
           elsif system(@cmd) # Try execute the command
-          else puts "No such command: #{@cmd}"
+          else puts "No such command or nick: #{@cmd}"
           end
         end
       end
