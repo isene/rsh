@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.21"
+@version    = "0.22"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -613,7 +613,7 @@ begin # Load .rshrc and populate @history
   ENV["TERM"]  = "rxvt-unicode-256color"
   ENV["PATH"]  ? ENV["PATH"] += ":" : ENV["PATH"] = ""
   ENV["PATH"] += "/home/#{@user}/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-  if File.exist?(@lscolors)
+  if @lscolors and File.exist?(@lscolors)
     ls = File.read(@lscolors) 
     ls.sub!(/export.*/, '')
     ls.sub!(/^LS_COLORS=/, 'ENV["LS_COLORS"]=')
