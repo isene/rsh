@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.25"
+@version    = "0.26"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -525,6 +525,8 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
   str.gsub(/\S+/) do |el|
     if @nick.include?(el)
       el.c(@c_nick)
+    elsif el == "r"
+      el.c(@c_nick)
     elsif @gnick.include?(el)
       el.c(@c_gnick)
     elsif File.exist?(el.sub(/^~/, "/home/#{@user}"))
@@ -609,7 +611,7 @@ end
 
 # INITIAL SETUP
 begin # Load .rshrc and populate @history
-  #trap "SIGINT" do print "\n"; exit end
+  trap "SIGINT" do end
   firstrun unless File.exist?(Dir.home+'/.rshrc') # Initial loading - to get history
   load(Dir.home+'/.rshrc') 
   ENV["SHELL"] = __FILE__
@@ -691,19 +693,21 @@ loop do
         if @cmd == "f" # fzf integration (https://github.com/junegunn/fzf)
           res = `fzf`.chomp
           Dir.chdir(File.dirname(res))
-        else
-          if File.exist?(@cmd) and not File.executable?(@cmd)
-            if File.read(@cmd).force_encoding("UTF-8").valid_encoding?
-              system("#{ENV['EDITOR']} #{@cmd}") # Try open with user's editor
+        elsif File.exist?(@cmd) and not File.executable?(@cmd)
+          if File.read(@cmd).force_encoding("UTF-8").valid_encoding?
+            system("#{ENV['EDITOR']} #{@cmd}") # Try open with user's editor
+          else
+            if @runmailcap
+              Thread.new { system("run-mailcap #{@cmd} 2>/dev/null") }
             else
-              if @runmailcap
-                Thread.new { system("run-mailcap #{@cmd} 2>/dev/null") }
-              else
-                Thread.new { system("xdg-open #{@cmd} 2>/dev/null") }
-              end
+              Thread.new { system("xdg-open #{@cmd} 2>/dev/null") }
             end
-          elsif system(@cmd) # Try execute the command
-          else puts "No such command or nick: #{@cmd}"
+          end
+        else 
+          begin
+            puts "No such command or nick: #{@cmd}" unless system (@cmd) # Try execute the command
+          rescue StandardError => err
+            puts "\n#{err}"
           end
         end
       end
