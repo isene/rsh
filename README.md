@@ -23,9 +23,9 @@ Or simply `gem install ruby-shell`.
 * Tab completions for nicks, system commands, command switches and dirs/files
 * Tab completion presents matches in a list to pick from
 * When you start to write a command, rsh will suggest the first match in the history and present that in "toned down" letters - press the arrow right key to accept the suggestion.
-* Writing a partial command and pressing `UP` will search history for matches.  Go down/up in the list and press `TAB` or `ENTER` to accept or `Ctrl-G` to discard
+* Writing a partial command and pressing `UP` will search history for matches.  Go down/up in the list and press `TAB` or `ENTER` to accept, `Ctrl-g` or `Ctrl-c` to discard
 * History with editing, search and repeat a history command (with `!`)
-* Config file (.rshrc) updates on exit (with Ctrl-d) or not (with Ctrl-c)
+* Config file (.rshrc) updates on exit (with Ctrl-d) or not (with Ctrl-e)
 * Set of simple rsh specific commands like nick, nick?, history and rmhistory
 * rsh specific commands and full set of Ruby commands available via :<command>
 * All colors are themeable in .rshrc (see github link for possibilities)

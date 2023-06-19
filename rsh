@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.24"
+@version    = "0.25"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -147,9 +147,9 @@ end
   * When you start to write a command, rsh will suggest the first match in the history and
     present that in "toned down" letters - press the arrow right key to accept the suggestion
   * Writing a partial command and pressing `UP` will search history for matches.
-    Go down/up in the list and press `TAB` or `ENTER` to accept or `Ctrl-G` to discard
-* History with editing, search and repeat a history command (with `!`)
-  * Config file (.rshrc) updates on exit (with Ctrl-d) or not (with Ctrl-c)
+    Go down/up in the list and press `TAB` or `ENTER` to accept, `Ctrl-g` or `Ctrl-c` to discard
+  * History with editing, search and repeat a history command (with `!`)
+  * Config file (.rshrc) updates on exit (with Ctrl-d) or not (with Ctrl-e)
   * Set of simple rsh specific commands like nick, nick?, history and rmhistory
   * rsh specific commands and full set of Ruby commands available via :<command>
   * All colors are themeable in .rshrc (see github link for possibilities)
@@ -229,6 +229,7 @@ def getchr # Process key presses
   when "", "" then chr = "BACK"
   when "" then chr = "C-C"
   when "" then chr = "C-D"
+  when "" then chr = "C-E"
   when "" then chr = "C-G"
   when "" then chr = "C-K"
   when "" then chr = "C-L"
@@ -267,10 +268,10 @@ def getstr # A custom Readline-like function
     @c.col(@pos0 + @pos)
     chr = getchr
     case chr
-    when 'C-G'
+    when 'C-G', 'C-C'
       @history[0] = "" 
       return
-    when 'C-C'   # Ctrl-C exits gracefully but without updating .rshrc
+    when 'C-E'   # Ctrl-C exits gracefully but without updating .rshrc
       print "\n"
       exit
     when 'C-D'   # Ctrl-D exits after updating .rshrc
@@ -608,7 +609,7 @@ end
 
 # INITIAL SETUP
 begin # Load .rshrc and populate @history
-  trap "SIGINT" do print "\n"; exit end
+  #trap "SIGINT" do print "\n"; exit end
   firstrun unless File.exist?(Dir.home+'/.rshrc') # Initial loading - to get history
   load(Dir.home+'/.rshrc') 
   ENV["SHELL"] = __FILE__
