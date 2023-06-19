@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.22"
+@version    = "0.23"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -363,6 +363,7 @@ def getstr # A custom Readline-like function
       @pos = 0
       lift = true
     when 'TAB'   # Tab completion of dirs and files
+      @ci = ""
       @tabsearch =~ /^-/ ? tabbing("switch") : tabbing("all")
       lift = true
     when 'S-TAB'
