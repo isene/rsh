@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "0.26"
+@version    = "1.0"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -270,7 +270,7 @@ def getstr # A custom Readline-like function
     case chr
     when 'C-G', 'C-C'
       @history[0] = "" 
-      return
+      @pos = 0
     when 'C-E'   # Ctrl-C exits gracefully but without updating .rshrc
       print "\n"
       exit
@@ -357,8 +357,13 @@ def getstr # A custom Readline-like function
     when 'C-K'   # Kill/delete that entry in the history
       @history.delete_at(@stk)
       @stk -= 1
-      @history[0] = @history[@stk].dup
-      @pos = @history[0].length
+      if @stk == 0
+        @history[0] = "" 
+        @pos = 0
+      else
+        @history[0] = @history[@stk].dup
+        @pos = @history[0].length
+      end
     when 'LDEL'  # Delete readline (Ctrl-U)
       @history[0] = ""
       @pos = 0
@@ -430,7 +435,7 @@ def tab_all(str) # TAB completion for Dirs/files, nicks and commands
 end
 def tab_switch(str) # TAB completion for command switches (TAB after "-")
   begin
-    hlp = `#{str} --help`
+    hlp = `#{str} --help 2>/dev/null`
     hlp = hlp.split("\n").grep(/^\s*-{1,2}[^-]/)
     hlp = hlp.map{|h| h.sub(/^\s*/, '').sub(/^--/, '    --')}
     switch = tabselect(hlp)
@@ -462,7 +467,7 @@ def tabselect(ary, hist=false) # Let user select from the incoming array
       tl = @tabsearch.length
       if x == 0
         @c.clear_line
-        tabchoice = ary[i].sub(/(.*?)[ ,].*/, '\1')
+        tabchoice = ary[i].sub(/^ *(.*?)[ ,].*/, '\1')
         tabline   = "#{@prompt}#{cmd_check(@tabstr)}#{tabchoice.c(@c_tabselect)}#{@tabend}"
         print tabline # Full command line
         @c_col = @pos0 + @tabstr.length + tabchoice.length
@@ -506,7 +511,7 @@ def tabselect(ary, hist=false) # Let user select from the incoming array
   @c.clear_screen_down
   @c.row(@c_row)
   @c.col(@c_col)
-  return ary[i]
+  return ary[i].sub(/^ */, '')
 end
 def nextline # Handle going to the next line in the terminal
   row, col = @c.pos
