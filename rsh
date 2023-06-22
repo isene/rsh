@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "1.0.1"
+@version    = "1.1"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -153,12 +153,14 @@ end
   * Set of simple rsh specific commands like nick, nick?, history and rmhistory
   * rsh specific commands and full set of Ruby commands available via :<command>
   * All colors are themeable in .rshrc (see github link for possibilities)
-  
+  * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
+
   Special functions/integrations:
   * Use `r` to launch rtfm (https://github.com/isene/RTFM) - if you have it installed
   * Use `f` to launch fzf (https://github.com/junegunn/fzf) - if you have it installed
   * Use `=` followed by xrpn commands separated by commas (https://github.com/isene/xrpn)
   * Use `:` followed by a Ruby expression to access the whole world of Ruby
+
   Special commands:
   * `:nick 'll = ls -l'` to make a command alias (ll) point to a command (ls -l)
   * `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
@@ -355,6 +357,9 @@ def getstr # A custom Readline-like function
         end
       end
       lift = true
+    when 'C-Y'   # Copy command line to primary selection
+      system("echo -n '#{@history[0]}' | xclip")
+      puts "\n#{Time.now.strftime("%H:%M:%S")}: Copied to primary selection (paste with middle buttoni)".c(@c_stamp)
     when 'C-K'   # Kill/delete that entry in the history
       @history.delete_at(@stk)
       @stk -= 1

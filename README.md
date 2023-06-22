@@ -29,6 +29,7 @@ Or simply `gem install ruby-shell`.
 * Set of simple rsh specific commands like nick, nick?, history and rmhistory
 * rsh specific commands and full set of Ruby commands available via :<command>
 * All colors are themeable in .rshrc (see github link for possibilities)
+* Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
   
 Special functions/integrations:
 * Use `r` to launch rtfm (https://github.com/isene/RTFM) - if you have it installed
