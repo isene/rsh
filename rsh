@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "1.0"
+@version    = "1.0.1"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -281,6 +281,7 @@ def getstr # A custom Readline-like function
       @c.row(1)
       @c.clear_screen_down
     when 'UP'    # Go up in history
+      #@history[0] = @history[@history[(@stk+1)..].index{|h| h =~ /#{@history[0]}/}+1] #Future magick
       if @stk == 0 and @history[0].length > 0
         @tabsearch = @history[0]
         tabbing("hist")
@@ -447,6 +448,7 @@ def tab_switch(str) # TAB completion for command switches (TAB after "-")
 end
 def tab_hist(str)
   sel  = @history.select {|el| el =~ /#{str}/}
+  sel.shift
   sel.delete("")
   hist = tabselect(sel, true)
   if hist
