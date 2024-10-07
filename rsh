@@ -14,7 +14,7 @@
 #             for any damages resulting from its use. Further, I am under no
 #             obligation to maintain or extend this software. It is provided 
 #             on an 'as is' basis without any expressed or implied warranty.
-@version    = "1.1"
+@version    = "1.1.2"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -261,9 +261,9 @@ def getstr # A custom Readline-like function
     print @prompt
     row, @pos0 = @c.pos
     print cmd_check(@history[0])
-    @ci  = @history[1..].find_index {|e| e =~ /^#{Regexp.escape(@history[0])}/}
+    @ci  = @history[1..].find_index {|e| e =~ /^#{Regexp.escape(@history[0])}./}
     @ci += 1 unless @ci == nil
-    if @history[0].length > 2 and @ci
+    if @history[0].length > 1 and @ci
       print @history[@ci][@history[0].length..].to_s.c(@c_stamp)
       right = true
     end
@@ -610,9 +610,9 @@ def gnick(nick_str) # Define a generic/global nick to match not only commands (f
 end
 def nick? # Show nicks
   puts "  Command nicks:".c(@c_nick)
-  @nick.each {|key, value| puts "  #{key} = #{value}"}
+  @nick.sort.each {|key, value| puts "  #{key} = #{value}"}
   puts "  General nicks:".c(@c_gnick)
-  @gnick.each {|key, value| puts "  #{key} = #{value}"}
+  @gnick.sort.each {|key, value| puts "  #{key} = #{value}"}
 end
 def dirs
   puts "Past direactories:"
@@ -689,7 +689,7 @@ loop do
     else # Execute command
       ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
       @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
-      ga = @gnick.transform_keys {|k| /\b#{Regexp.escape k}\b/}
+      ga = @gnick.transform_keys {|k| /\b(?<!-)#{Regexp.escape k}\b/}
       @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
       @cmd = "~" if @cmd == "cd"
       @cmd.sub!(/^cd (\S*).*/, '\1')
@@ -717,7 +717,7 @@ loop do
           end
         else 
           begin
-            puts "No such command or nick: #{@cmd}" unless system (@cmd) # Try execute the command
+            puts "Not executed: #{@cmd}" unless system (@cmd) # Try execute the command
           rescue StandardError => err
             puts "\n#{err}"
           end
