@@ -4,7 +4,7 @@
 The Ruby SHell
 
 # Why?
-Ruby is my goto language (pun kinda intended). I want full control over my tools and I like challenges that I can tinker with late at night. This is an incomplete project continually being improved. Feel free to add suggestions or code.
+<img src="img/rsh-logo.jpg" align="left" width="150" height="150">Ruby is my goto language (pun kinda intended). I want full control over my tools and I like challenges that I can tinker with late at night. This is an incomplete project continually being improved. Feel free to add suggestions or code.
 
 # Design principles
 Simple. One file. Minimum external requirements.

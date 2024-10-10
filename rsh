@@ -7,25 +7,20 @@
 # Author:     Geir Isene <g@isene.com>
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
-# License:    I release all copyright claims. This code is in the public domain.
-#             Permission is granted to use, copy modify, distribute, and sell
-#             this software for any purpose. I make no guarantee about the
-#             suitability of this software for any purpose and I am not liable
-#             for any damages resulting from its use. Further, I am under no
-#             obligation to maintain or extend this software. It is provided 
-#             on an 'as is' basis without any expressed or implied warranty.
-@version    = "1.1.2"
+# License:    Public domain
+@version    = "1.2"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
-  def c(code);  color(self, "\001\e[38;5;#{code}m\002"); end
-  def b;        color(self, "\001\e[1m\002"); end
-  def i;        color(self, "\001\e[3m\002"); end
-  def u;        color(self, "\001\e[4m\002"); end
-  def l;        color(self, "\001\e[5m\002"); end
+  def c(code);  color(self, "\001\e[38;5;#{code}m\002"); end  # Color code
+  def b;        color(self, "\001\e[1m\002"); end             # Bold
+  def i;        color(self, "\001\e[3m\002"); end             # Italic
+  def u;        color(self, "\001\e[4m\002"); end             # Underline
+  def l;        color(self, "\001\e[5m\002"); end             # Blink
+  def r;        color(self, "\001\e[7m\002"); end             # Reverse
   def color(text, color_code)  "#{color_code}#{text}\001\e[0m\002" end
 end
-module Cursor # Terminal cursor movement ANSI codes (thanks to https://github.com/piotrmurach/tty-cursor/tree/master)
+module Cursor # Terminal cursor movement ANSI codes (thanks to https://github.com/piotrmurach/tty-cursor)
   module_function
   ESC = "\e".freeze
   CSI = "\e[".freeze
@@ -102,13 +97,13 @@ begin # Requires
 end
 begin # Initialization
   # Theming
-  @c_prompt    = 196                      # Color for basic prompt
-  @c_cmd       = 48                       # Color for valid command
-  @c_nick      = 51                       # Color for matching nick
-  @c_gnick     = 87                       # Color for matching gnick
-  @c_path      = 208                      # Color for valid path
-  @c_switch    = 148                      # Color for switches/options
-  @c_tabselect = 207                      # Color for selected tabcompleted item
+  @c_prompt    = 10                       # Color for basic prompt
+  @c_cmd       = 2                        # Color for valid command
+  @c_nick      = 6                        # Color for matching nick
+  @c_gnick     = 14                       # Color for matching gnick
+  @c_path      = 3                        # Color for valid path
+  @c_switch    = 6                        # Color for switches/options
+  @c_tabselect = 5                        # Color for selected tabcompleted item
   @c_taboption = 244                      # Color for unselected tabcompleted item
   @c_stamp     = 244                      # Color for time stamp/command
   # Prompt
@@ -123,12 +118,14 @@ begin # Initialization
                   "/usr/bin", 
                   "/home/#{@user}/bin"]   # Basic paths for executables if not set in .rshrc
   # History
-  @histsize    = 100                      # Max history if not set in .rshrc
+  @histsize    = 200                      # Max history if not set in .rshrc
   @hloaded     = false                    # Variable to determine if history is loaded
-  # Use run-mailcap instead of xgd-open? Set = true in .rshrc if iyou want run-mailcap
+  # Use run-mailcap instead of xgd-open? Set "= true" in .rshrc if you want run-mailcap
   @runmailcap  = false
   # Variable initializations
   @dirs        = ["."]*10
+  def pre_cmd; end                        # User-defined function to be run BEFORE command execution
+  def post_cmd; end                       # User-defined function to be run AFTER  command execution
 end
 
 # HELP TEXT
@@ -158,7 +155,7 @@ end
   Special functions/integrations:
   * Use `r` to launch rtfm (https://github.com/isene/RTFM) - if you have it installed
   * Use `f` to launch fzf (https://github.com/junegunn/fzf) - if you have it installed
-  * Use `=` followed by xrpn commands separated by commas (https://github.com/isene/xrpn)
+  * Use `=` followed by xrpn commands separated by commas or double-spaces (https://github.com/isene/xrpn)
   * Use `:` followed by a Ruby expression to access the whole world of Ruby
 
   Special commands:
@@ -219,6 +216,7 @@ def getchr # Process key presses
       when '6' then chr = "PgDOWN" ; chr = "C-PgDOWN" if STDIN.getc == "^"
       when '7' then chr = "HOME"   ; chr = "C-HOME"   if STDIN.getc == "^"
       when '8' then chr = "END"    ; chr = "C-END"    if STDIN.getc == "^"
+      else chr = ""
       end
     when 'O'   # Set Ctrl+ArrowKey equal to ArrowKey; May be used for other purposes in the future
       case STDIN.getc
@@ -226,6 +224,7 @@ def getchr # Process key presses
       when 'b' then chr = "C-DOWN"
       when 'c' then chr = "C-RIGHT"
       when 'd' then chr = "C-LEFT"
+      else chr = ""
       end
     end
   when "", "" then chr = "BACK"
@@ -245,6 +244,7 @@ def getchr # Process key presses
   when "\r" then chr = "ENTER"
   when "\t" then chr = "TAB"
   when /[[:print:]]/  then chr = c
+  else chr = ""
   end
   return chr
 end
@@ -502,11 +502,11 @@ def tabselect(ary, hist=false) # Let user select from the incoming array
     when 'TAB'
       chr = "ENTER"
     when 'BACK'
+      @tabsearch.chop!
       if @tabsearch == ''
         @c.clear_screen_down
         return ""
       end
-      @tabsearch.chop!
       hist ? tab_hist(@tabsearch) : tab_all(@tabsearch)
       return @tabsearch
     when /^[[:print:]]$/
@@ -676,7 +676,10 @@ loop do
       system("git status .") if Dir.exist?(".git")
       next
     end
-    @cmd = "echo \"#{@cmd[1...]},prx,off\" | xrpn" if @cmd =~ /^\=/ # Integration with xrpn (https://github.com/isene/xrpn)
+    if @cmd =~ /^\=/ # Integration with xrpn (https://github.com/isene/xrpn)
+      @cmd.gsub!("  ", ",")
+      @cmd = "echo \"#{@cmd[1...]},prx,off\" | xrpn" 
+    end
     if @cmd.match(/^\s*:/) # Ruby commands are prefixed with ":"
       begin
         eval(@cmd[1..-1])
@@ -717,7 +720,9 @@ loop do
           end
         else 
           begin
+            pre_cmd
             puts "Not executed: #{@cmd}" unless system (@cmd) # Try execute the command
+            post_cmd
           rescue StandardError => err
             puts "\n#{err}"
           end
