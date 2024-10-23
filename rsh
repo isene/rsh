@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "1.2"
+@version    = "2.0"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -86,6 +86,12 @@ module Cursor # Terminal cursor movement ANSI codes (thanks to https://github.co
   end
   def clear_screen_down
     print(CSI + 'J')
+  end
+end
+def stdin_clear
+  begin
+    $stdin.getc while $stdin.ready?
+  rescue
   end
 end
 
@@ -174,7 +180,7 @@ def firstrun
   puts "Since there is no rsh configuration file (.rshrc), I will help you set it up to suit your needs.\n\n"
   puts "The prompt you see now is the very basic rsh prompt:"
   print "#{@prompt} (press ENTER)"
-  STDIN.gets
+  $stdin.gets
   puts "\nI will now change the prompt into something more useful."
   puts "Feel free to amend the prompt in your .rshrc.\n\n"
   rc = <<~RSHRC
@@ -199,27 +205,28 @@ RSHRC
   File.write(Dir.home+'/.rshrc', rc)
 end
 def getchr # Process key presses
-  c = STDIN.getch
+  c = $stdin.getch
   case c
-  when "\e"    # ANSI escape sequences
-    case STDIN.getc
+  when "\e"    # ANSI escape sequences (with only ESC, it should stop right here)
+    return "ESC" if $stdin.ready? == nil
+    case $stdin.getc
     when '['   # CSI
-      case STDIN.getc
+      case $stdin.getc  # Will get (or ASK) for more (remaining part of special character)
       when 'A' then chr = "UP"
       when 'B' then chr = "DOWN"
       when 'C' then chr = "RIGHT"
       when 'D' then chr = "LEFT"
       when 'Z' then chr = "S-TAB"
-      when '2' then chr = "INS"    ; chr = "C-INS"    if STDIN.getc == "^"
-      when '3' then chr = "DEL"    ; chr = "C-DEL"    if STDIN.getc == "^"
-      when '5' then chr = "PgUP"   ; chr = "C-PgUP"   if STDIN.getc == "^"
-      when '6' then chr = "PgDOWN" ; chr = "C-PgDOWN" if STDIN.getc == "^"
-      when '7' then chr = "HOME"   ; chr = "C-HOME"   if STDIN.getc == "^"
-      when '8' then chr = "END"    ; chr = "C-END"    if STDIN.getc == "^"
+      when '2' then chr = "INS"    ; chr = "C-INS"    if $stdin.getc == "^"
+      when '3' then chr = "DEL"    ; chr = "C-DEL"    if $stdin.getc == "^"
+      when '5' then chr = "PgUP"   ; chr = "C-PgUP"   if $stdin.getc == "^"
+      when '6' then chr = "PgDOWN" ; chr = "C-PgDOWN" if $stdin.getc == "^"
+      when '7' then chr = "HOME"   ; chr = "C-HOME"   if $stdin.getc == "^"
+      when '8' then chr = "END"    ; chr = "C-END"    if $stdin.getc == "^"
       else chr = ""
       end
     when 'O'   # Set Ctrl+ArrowKey equal to ArrowKey; May be used for other purposes in the future
-      case STDIN.getc
+      case $stdin.getc
       when 'a' then chr = "C-UP"
       when 'b' then chr = "C-DOWN"
       when 'c' then chr = "C-RIGHT"
@@ -246,6 +253,7 @@ def getchr # Process key presses
   when /[[:print:]]/  then chr = c
   else chr = ""
   end
+  stdin_clear
   return chr
 end
 def getstr # A custom Readline-like function
@@ -260,11 +268,15 @@ def getstr # A custom Readline-like function
     @c.clear_line
     print @prompt
     row, @pos0 = @c.pos
+    #@history[0] = "" if @history[0].nil?
     print cmd_check(@history[0])
-    @ci  = @history[1..].find_index {|e| e =~ /^#{Regexp.escape(@history[0])}./}
-    @ci += 1 unless @ci == nil
-    if @history[0].length > 1 and @ci
-      print @history[@ci][@history[0].length..].to_s.c(@c_stamp)
+    @ci  = @history[1..].find_index {|e| e =~ /^#{Regexp.escape(@history[0].to_s)}./}
+    unless @ci == nil
+      @ci += 1
+      @ciprompt = @history[@ci][@history[0].to_s.length..].to_s
+    end
+    if @history[0].to_s.length > 1 and @ci
+      print @ciprompt.c(@c_stamp)
       right = true
     end
     @c.col(@pos0 + @pos)
@@ -283,10 +295,9 @@ def getstr # A custom Readline-like function
       @c.row(1)
       @c.clear_screen_down
     when 'UP'    # Go up in history
-      #@history[0] = @history[@history[(@stk+1)..].index{|h| h =~ /#{@history[0]}/}+1] #Future magick
       if @stk == 0 and @history[0].length > 0
         @tabsearch = @history[0]
-        tabbing("hist")
+        tab("hist")
       else
         if lift
           @history.unshift("")
@@ -296,6 +307,7 @@ def getstr # A custom Readline-like function
         unless @stk >= @history.length - 1
           @stk += 1 
           @history[0] = @history[@stk].dup
+          @history[0] = "" unless @history[0]
           @pos = @history[0].length
         end
         lift = false
@@ -368,6 +380,7 @@ def getstr # A custom Readline-like function
         @pos = 0
       else
         @history[0] = @history[@stk].dup
+        @history[0] = "" unless @history[0]
         @pos = @history[0].length
       end
     when 'LDEL'  # Delete readline (Ctrl-U)
@@ -376,7 +389,8 @@ def getstr # A custom Readline-like function
       lift = true
     when 'TAB'   # Tab completion of dirs and files
       @ci = nil
-      @tabsearch =~ /^-/ ? tabbing("switch") : tabbing("all")
+      #@tabsearch =~ /^-/ ? tabbing("switch") : tabbing("all")
+      tab("all")
       lift = true
     when 'S-TAB'
       @ci = nil
@@ -387,138 +401,133 @@ def getstr # A custom Readline-like function
       @pos += 1
       lift = true
     end
-    while STDIN.ready?
-      chr = STDIN.getc
+    while $stdin.ready?
+      chr = $stdin.getc
       @history[0].insert(@pos,chr)
       @pos += 1
     end
   end
+  @c.col(@pos0 + @history[0].length)
+  @c.clear_screen_down
 end
-def tabbing(type)
-  @tabstr    = @history[@stk][0...@pos]
-  @tabend    = @history[@stk][@pos..]
-  elements   = @tabstr.split(" ")
-  if @tabstr.match(" $")
-    elements.append("")
-    @tabsearch = ""
-  else
-    @tabsearch = elements.last.to_s
-    @tabstr = @tabstr[0...-@tabsearch.length]
-  end
-  i = elements.length - 1
-  if @tabsearch =~ /^-/
-    until i == 0
-      i -= 1
-      if elements[i] !~ /^-/
-        tab_switch(elements[i])
-        break
-      end
-    end
-  elsif type == 'all'
-    tab_all(@tabsearch)
-  elsif type == 'hist'
-    tab_hist(@tabsearch)
-  end
-  @history[@stk] = @tabstr.to_s + @tabsearch.to_s + @tabend.to_s
-end
-def tab_all(str) # TAB completion for Dirs/files, nicks and commands
-  exe = []
-  @path.each do |p|
-    Dir.glob(p).each do |c| 
-      exe.append(File.basename(c)) if File.executable?(c) and not Dir.exist?(c)
-    end
-  end
-  exe.prepend(*@nick.keys)
-  exe.prepend(*@gnick.keys)
-  compl      = exe.select {|s| s =~ Regexp.new("^" + str)}
-  fdir       = str
-  fdir      += "/" if Dir.exist?(fdir)
-  fdir      += "*"
-  compl.prepend(*Dir.glob(fdir))
-  match      = tabselect(compl) unless compl.empty?
-  @tabsearch = match if match
-  @pos       = @tabstr.length + @tabsearch.length if match
-end
-def tab_switch(str) # TAB completion for command switches (TAB after "-")
-  begin
-    hlp = `#{str} --help 2>/dev/null`
-    hlp = hlp.split("\n").grep(/^\s*-{1,2}[^-]/)
-    hlp = hlp.map{|h| h.sub(/^\s*/, '').sub(/^--/, '    --')}
-    switch = tabselect(hlp)
-    switch = switch.sub(/ .*/, '').sub(/,/, '')
-    @tabsearch = switch if switch
-    @pos = @tabstr.length + @tabsearch.length
-  rescue
-  end
-end
-def tab_hist(str)
-  sel  = @history.select {|el| el =~ /#{str}/}
-  sel.shift
-  sel.delete("")
-  hist = tabselect(sel, true)
-  if hist
-    @tabsearch = hist 
-    @tabstr    = ""
-    @pos       = @tabsearch.length
-  end
-end
-def tabselect(ary, hist=false) # Let user select from the incoming array
-  ary.uniq!
-  @c_row, @c_col = @c.pos
-  chr = ""
+
+def tab(type)
   i = 0
+  chr = ""
+  @tabarray = []
+  @pretab = @history[0][0...@pos].to_s        # Extract the current line up to cursor
+  @postab = @history[0][@pos..].to_s          # Extract the current line from cursor to end
+  @c_row, @c_col = @c.pos                     # Get cursor position
+  @tabstr = @pretab.split(/[|, ]/).last.to_s  # Get the sustring that is being tab completed
+  @tabstr = "" if @pretab[-1] =~ /[ |]/
+  @pretab = @pretab.delete_suffix(@tabstr)
+  type = "switch" if @tabstr[0] == "-"
   while chr != "ENTER"
-    @c.clear_screen_down
-    ary.length - i < 5 ? l = ary.length - i : l = 5
-    l.times do |x|
-      tl = @tabsearch.length
-      if x == 0
-        @c.clear_line
-        tabchoice = ary[i].sub(/^ *(.*?)[ ,].*/, '\1')
-        tabline   = "#{@prompt}#{cmd_check(@tabstr)}#{tabchoice.c(@c_tabselect)}#{@tabend}"
-        print tabline # Full command line
-        @c_col = @pos0 + @tabstr.length + tabchoice.length
-        nextline
-        print " " + ary[i].sub(/(.*?)#{@tabsearch}(.*)/, '\1'.c(@c_tabselect) + @tabsearch + '\2'.c(@c_tabselect))
+    case type
+    when "hist"         # Handle history completions ('UP' key)
+      @tabarray = @history.select {|el| el =~ /#{@tabstr}/} # Select history items matching @tabstr
+      @tabarray.shift   # Take away @history[0]
+      return if @tabarray.empty?
+    when "switch"
+      cmdswitch = @pretab.split(/[|, ]/).last.to_s
+      hlp = `#{cmdswitch} --help 2>/dev/null`
+      hlp = hlp.split("\n").grep(/^\s*-{1,2}[^-]/)
+      hlp = hlp.map{|h| h.sub(/^\s*/, '').sub(/^--/, '    --')}
+      hlp = hlp.reject{|h| /-</ =~ h}
+      @tabarray = hlp
+    when "all"          # Handle all other tab completions
+      exe = []
+      @path.each do |p| # Add all executables in @path
+        Dir.glob(p).each do |c|
+          exe.append(File.basename(c)) if File.executable?(c) and not Dir.exist?(c)
+        end
+      end
+      exe.sort!
+      exe.prepend(*@nick.keys)        # Add nicks
+      exe.prepend(*@gnick.keys)       # Add gnicks
+      compl      = exe.select {|s| s =~ Regexp.new(@tabstr)} # Select only that which matches so far
+      fdir       = @tabstr + "*"
+      compl.prepend(*Dir.glob(fdir)).map! do |e| 
+        if e =~ /(?<!\\) / 
+          e = e.sub(/(.*\/|^)(.*)/, '\1\'\2\'') unless  e =~ /'/
+        end
+        Dir.exist?(e) ? e + "/" : e   # Add matching dirs
+      end
+      @tabarray = compl               # Finally put it into @tabarray
+    end
+    return if @tabarray.empty?
+    @tabarray.delete("")                                      # Don't remember why
+    @c.clear_screen_down                                      # Here we go
+    @tabarray.length.to_i - i < 5 ? l = @tabarray.length.to_i - i : l = 5 # Max 5 rows of completion items
+    l.times do |x|                                            # Iterate through
+      if x == 0                                               # First item goes onto the commandline
+        @c.clear_line                                         # Clear the line
+        tabchoice = @tabarray[i]                              # Select the item from the @tabarray
+        tabchoice = tabchoice.sub(/\s*(-.*?)[,\s].*/, '\1') if type == "switch"
+        @newhist0 = @pretab + tabchoice + @postab             # Remember now the new value to be given to @history[0]
+        line1     = cmd_check(@pretab).to_s                   # Syntax highlight before @tabstr
+        line2     = cmd_check(@postab).to_s                   # Syntax highlight after  @tabstr
+        # Color and underline the current tabchoice on the commandline:
+        tabline   = tabchoice.sub(/(.*)#{@tabstr}(.*)/, '\1'.c(@c_tabselect) + @tabstr.u.c(@c_tabselect) + '\2'.c(@c_tabselect))
+        print @prompt + line1 + tabline + line2               # Print the commandline
+        @pos   = @pretab.length.to_i + tabchoice.length.to_i  # Set the position on that commandline
+        @c_col = @pos0 + @pos                                 # The cursor position must include the prompt as well
+        @c.col(@c_col)                                        # Set the cursor position
+        nextline                                              # Then start showing the completion items
+        tabline  = @tabarray[i]                               # Get the next matching tabline
+        # Can't nest ANSI codes, they must each complete/conclude or they will mess eachother up
+        tabline1 = tabline.sub(/(.*?)#{@tabstr}.*/, '\1').c(@c_tabselect) # Color the part before the @tabstr
+        tabline2 = tabline.sub(/.*?#{@tabstr}(.*)/, '\1').c(@c_tabselect) # Color the part after the @tabstr
+        print " " + tabline1 + @tabstr.c(@c_tabselect).u + tabline2       # Color & underline @tabstr
       else
         begin
-          print " " + ary[i+x].sub(/(.*?)#{@tabsearch}(.*)/, '\1'.c(@c_taboption) + @tabsearch + '\2'.c(@c_taboption))
+          tabline = @tabarray[i+x]    # Next tabline, and next, etc (usually 4 times here)
+          tabline1 = tabline.sub(/(.*?)#{@tabstr}.*/, '\1').c(@c_taboption) # Color before @tabstr
+          tabline2 = tabline.sub(/.*?#{@tabstr}(.*)/, '\1').c(@c_taboption) # Color after @tabstr
+          print " " + tabline1 + @tabstr.c(@c_taboption).u + tabline2       # Print the whole line
         rescue
         end
       end
-      nextline
+      nextline      # To not run off screen
     end
-    @c.row(@c_row)
-    @c.col(@c_col)
-    chr = getchr
-    case chr
-    when 'C-G', 'C-C'
-      @c.clear_screen_down
-      return @tabsearch
+    @c.row(@c_row)  # Set cursor row to commandline
+    @c.col(@c_col)  # Set cursor col on commandline 
+    chr = getchr    # Now get user input
+    case chr        # Treat the keypress
+    when 'C-G', 'C-C', 'ESC'
+      tabend; return
     when 'DOWN'
-      i += 1 unless i > ary.length - 2
+      i += 1 unless i > @tabarray.length.to_i - 2
     when 'UP'
       i -= 1 unless i == 0
-    when 'TAB'
+    when 'TAB', 'RIGHT'  # Effectively the same as ENTER 
       chr = "ENTER"
-    when 'BACK'
-      @tabsearch.chop!
-      if @tabsearch == ''
-        @c.clear_screen_down
-        return ""
+    when 'BACK', 'LEFT'  # Delete one character to the left
+      if @tabstr == ""
+        @history[0] = @pretab + @postab
+        tabend
+        return 
       end
-      hist ? tab_hist(@tabsearch) : tab_all(@tabsearch)
-      return @tabsearch
+      @tabstr.chop!
+    when 'WBACK' # Delete one word to the left (Ctrl-W)
+      if @tabstr == ""
+        @history[0] = @pretab + @postab
+        tabend
+        return 
+      end
+      @tabstr.sub!(/#{@tabstr.split(/[|, ]/).last}.*/, '')
+    when ' '
+      @tabstr += " "
+      chr = "ENTER"
     when /^[[:print:]]$/
-      @tabsearch += chr
-      hist ? tab_hist(@tabsearch) : tab_all(@tabsearch)
-      return @tabsearch
+      @tabstr += chr
+      i = 0
     end
   end
   @c.clear_screen_down
   @c.row(@c_row)
   @c.col(@c_col)
-  return ary[i].sub(/^ */, '')
+  @history[0] = @newhist0
 end
 def nextline # Handle going to the next line in the terminal
   row, col = @c.pos
@@ -528,26 +537,33 @@ def nextline # Handle going to the next line in the terminal
   end
   @c.next_line
 end
+def tabend
+  @c.clear_screen_down
+  @pos = @history[0].length
+  @c_col = @pos0 + @pos
+  @c.col(@c_col)
+end
 def hist_clean # Clean up @history
   @history.uniq!
   @history.compact!
   @history.delete("")
 end
 def cmd_check(str) # Check if each element on the readline matches commands, nicks, paths; color them
-  str.gsub(/\S+/) do |el|
+  return if str.nil?
+  str.gsub(/(?:\S'[^']*'|[^ '])+/) do |el|
     if @nick.include?(el)
       el.c(@c_nick)
-    elsif el == "r"
+    elsif el == "r" or el == "f"
       el.c(@c_nick)
     elsif @gnick.include?(el)
       el.c(@c_gnick)
-    elsif File.exist?(el.sub(/^~/, "/home/#{@user}"))
+    elsif File.exist?(el.gsub("'", ""))
       el.c(@c_path)
     elsif system "which #{el}", %i[out err] => File::NULL
       el.c(@c_cmd)
     elsif el == "cd"
       el.c(@c_cmd)
-    elsif el =~ /^-/
+    elsif el[0] == "-"
       el.c(@c_switch)
     else
       el
@@ -568,7 +584,7 @@ def rshrc # Write updates to .rshrc
   conf.sub!(/^@history.*\n/, "") 
   conf += "@history = #{@history.last(@histsize)}\n"
   File.write(Dir.home+'/.rshrc', conf)
-  puts ".rshrc updated"
+  puts "\n.rshrc updated"
 end
 
 # RSH FUNCTIONS
@@ -654,6 +670,7 @@ loop do
     h = @history; load(Dir.home+'/.rshrc') if File.exist?(Dir.home+'/.rshrc'); @history = h # reload prompt but not history
     @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
     system("printf \"\033]0;rsh: #{Dir.pwd}\007\"")   # Set Window title to path 
+    @history[0] = "" unless @history[0]
     getstr # Main work is here
     @cmd = @history[0]
     @dirs.unshift(Dir.pwd)
@@ -721,7 +738,7 @@ loop do
         else 
           begin
             pre_cmd
-            puts "Not executed: #{@cmd}" unless system (@cmd) # Try execute the command
+            puts " Not executed: #{@cmd}" unless system (@cmd) # Try execute the command
             post_cmd
           rescue StandardError => err
             puts "\n#{err}"
@@ -729,8 +746,8 @@ loop do
         end
       end
     end
-  rescue StandardError => err # Throw error nicely
-    puts "\n#{err}"
+  #rescue StandardError => err # Throw error nicely
+  #  puts "\n#{err}"
   end
 end
 
