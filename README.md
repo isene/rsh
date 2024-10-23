@@ -60,7 +60,7 @@ Hitting Shift-TAB will do a similar search through the command history - but wit
 If you press `ENTER` after writing or tab-completing to a file, rsh will try to open the file in the user's EDITOR of choice (if it is a valid text file) or use `xdg-open` to open the file using the correct program. If you, for some reason want to use `run-mailcap` instead of `xdg-open` as the file opener, simply add `@runmailcap = true` to your `.rshrc`.
 
 ## History
-Show the history with `:history`. Redo a history command with an exclamation mark and the number corresponding to the position in the history, like `!5` would do the 5th history command again.
+Show the history with `:history`. Redo a history command with an exclamation mark and the number corresponding to the position in the history, like `!5` would do the 5th history command again. To delete a specific entry in history, hit `UP` and move up to that entry and hit `Ctrl-k` (for "kill").
 
 ## Integrations
 rsh is integrated with the [rtfm file manager](https://github.com/isene/RTFM), with [fzf](https://github.com/junegunn/fzf) and with the programming language [XRPN](https://github.com/isene/xrpn). 
