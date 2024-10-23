@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.0"
+@version    = "2.1"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -746,8 +746,8 @@ loop do
         end
       end
     end
-  #rescue StandardError => err # Throw error nicely
-  #  puts "\n#{err}"
+  rescue StandardError => err # Throw error nicely
+    puts "\n#{err}"
   end
 end
 
