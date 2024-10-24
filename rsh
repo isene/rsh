@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.1"
+@version    = "2.2"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -120,9 +120,7 @@ begin # Initialization
   @history     = []                       # Initiate history array
   # Paths
   @user = Etc.getpwuid(Process.euid).name # For use in @prompt
-  @path        = ["/bin", 
-                  "/usr/bin", 
-                  "/home/#{@user}/bin"]   # Basic paths for executables if not set in .rshrc
+  @path        = ENV["PATH"].split(":")   # Get paths
   # History
   @histsize    = 200                      # Max history if not set in .rshrc
   @hloaded     = false                    # Variable to determine if history is loaded
@@ -253,7 +251,7 @@ def getchr # Process key presses
   when /[[:print:]]/  then chr = c
   else chr = ""
   end
-  stdin_clear
+  #stdin_clear
   return chr
 end
 def getstr # A custom Readline-like function
@@ -410,7 +408,6 @@ def getstr # A custom Readline-like function
   @c.col(@pos0 + @history[0].length)
   @c.clear_screen_down
 end
-
 def tab(type)
   i = 0
   chr = ""
