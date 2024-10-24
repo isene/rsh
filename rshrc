@@ -1,0 +1,48 @@
+# vim: set ft=ruby sw=2 sts=2 et :
+# Example config file for rsh (.rshrc)
+
+# ENVIRONMENT
+@lscolors            = "/home/geir/.local/share/lscolors.sh"
+ENV["EDITOR"]        = "vim"
+ENV["IRCNAME"]       = "Geir Isene"                  
+ENV["IRCNICK"]       = "isene"                       
+ENV["LESS"]          = "-M-Q-r"
+ENV["LESSCHARDEF"]   = "8bcccbcc13b.4b95.33b."   
+ENV["LESSCHARSET"]   = "latin1"                  
+ENV["LESSEDIT"]      = "%E ?lt+%lt. %f"             
+ENV["LESSOPEN"]      = "| /home/geir/bin/lesspipe %s"    
+ENV["MANPAGER"]      = "vim +MANPAGER -"
+ENV["PAGER"]         = "less"                          
+ENV["TZ"]            = 'Europe/Oslo'
+ENV["VISUAL"]        = "vim"                        
+ENV["XDG_DATA_HOME"] = "/home/geir/.local/share"
+ENV["PATH"]         += ":/home/geir/bin"
+
+# PROMPT
+if @user == "root"
+  @prompt = @user.c(1).b + "@#{@node}".c(1) 
+else
+  @prompt = @user.c(2).b + "@#{@node}".c(2)
+end
+@prompt += ":".c(252) + " #{Dir.pwd}/".c(3) + " ".c(255)
+
+# THEME
+#@c_prompt    = 196  # Color for basic prompt
+#@c_cmd       = 84   # Color for valid command
+#@c_nick      = 87   # Color for matching nick
+#@c_gnick     = 123  # Color for matching gnick
+#@c_path      = 208  # Color for valid path
+#@c_switch    = 148  # Color for switches/options
+#@c_tabselect = 220  # Color for selected tabcompleted item
+#@c_taboption = 94   # Color for unselected tabcompleted item
+#@c_stamp     = 244  # Color for time stamp/command
+
+def pre_cmd
+end
+
+def post_cmd
+end
+
+# NICKS AND HISTORY
+@nick = {"ls"=>"ls --color -F", "l"=>"less", "v"=>"vim", "gu"=>"gitmagic -u", "gc"=>"git clone", "gs"=>"git status .", "vv"=>"vim ~/.vimrc", "vr"=>"vim ~/.rshrc"}
+@history = []
