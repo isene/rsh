@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.2"
+@version    = "2.3"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -416,7 +416,8 @@ def tab(type)
   @postab = @history[0][@pos..].to_s          # Extract the current line from cursor to end
   @c_row, @c_col = @c.pos                     # Get cursor position
   @tabstr = @pretab.split(/[|, ]/).last.to_s  # Get the sustring that is being tab completed
-  @tabstr = "" if @pretab[-1] =~ /[ |]/
+  @tabstr = "" if @pretab[-1] =~ /[ |]/       # Tab from nothing if tabbing starts with space or pipe
+  @tabstr = @pretab if type == "hist"         # Searching for matches with whole string in history
   @pretab = @pretab.delete_suffix(@tabstr)
   type = "switch" if @tabstr[0] == "-"
   while chr != "ENTER"
