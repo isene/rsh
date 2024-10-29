@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.3"
+@version    = "2.5"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -118,6 +118,7 @@ begin # Initialization
   @nick        = {}                       # Initiate alias/nick hash
   @gnick       = {}                       # Initiate generic/global alias/nick hash
   @history     = []                       # Initiate history array
+  @exe = []
   # Paths
   @user = Etc.getpwuid(Process.euid).name # For use in @prompt
   @path        = ENV["PATH"].split(":")   # Get paths
@@ -434,16 +435,12 @@ def tab(type)
       hlp = hlp.reject{|h| /-</ =~ h}
       @tabarray = hlp
     when "all"          # Handle all other tab completions
-      exe = []
-      @path.each do |p| # Add all executables in @path
-        Dir.glob(p).each do |c|
-          exe.append(File.basename(c)) if File.executable?(c) and not Dir.exist?(c)
-        end
-      end
-      exe.sort!
-      exe.prepend(*@nick.keys)        # Add nicks
-      exe.prepend(*@gnick.keys)       # Add gnicks
-      compl      = exe.select {|s| s =~ Regexp.new(@tabstr)} # Select only that which matches so far
+      ex  = []
+      ex += @exe
+      ex.sort!
+      ex.prepend(*@nick.keys)        # Add nicks
+      ex.prepend(*@gnick.keys)       # Add gnicks
+      compl      = ex.select {|s| s =~ Regexp.new(@tabstr)} # Select only that which matches so far
       fdir       = @tabstr + "*"
       compl.prepend(*Dir.glob(fdir)).map! do |e| 
         if e =~ /(?<!\\) / 
@@ -548,19 +545,25 @@ def hist_clean # Clean up @history
 end
 def cmd_check(str) # Check if each element on the readline matches commands, nicks, paths; color them
   return if str.nil?
+ #elements = str.scan(/[^\s']+|'.+?'/)
+ #elements.map! do |el|
+ # .... the ifs
+ #elements.join(" ")
   str.gsub(/(?:\S'[^']*'|[^ '])+/) do |el|
-    if @nick.include?(el)
+    if @exe.include?(el)
+      el.c(@c_cmd)
+    elsif el == "cd"
+      el.c(@c_cmd)
+    elsif File.executable?(el.gsub("'", ""))
+      el.c(@c_cmd)
+    elsif File.exist?(el.gsub("'", ""))
+      el.c(@c_path)
+    elsif @nick.include?(el)
       el.c(@c_nick)
     elsif el == "r" or el == "f"
       el.c(@c_nick)
     elsif @gnick.include?(el)
       el.c(@c_gnick)
-    elsif File.exist?(el.gsub("'", ""))
-      el.c(@c_path)
-    elsif system "which #{el}", %i[out err] => File::NULL
-      el.c(@c_cmd)
-    elsif el == "cd"
-      el.c(@c_cmd)
     elsif el[0] == "-"
       el.c(@c_switch)
     else
@@ -669,6 +672,12 @@ loop do
     @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
     system("printf \"\033]0;rsh: #{Dir.pwd}\007\"")   # Set Window title to path 
     @history[0] = "" unless @history[0]
+    @exe = []
+    @path.each do |p| # Add all executables in @path
+      Dir.glob(p).each do |c|
+        @exe.append(File.basename(c)) if File.executable?(c) and not Dir.exist?(c)
+      end
+    end
     getstr # Main work is here
     @cmd = @history[0]
     @dirs.unshift(Dir.pwd)
