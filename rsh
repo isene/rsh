@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.5"
+@version    = "2.6"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -41,6 +41,14 @@ module Cursor # Terminal cursor movement ANSI codes (thanks to https://github.co
     end
     m = res.match /(?<row>\d+);(?<col>\d+)/
     return m[:row].to_i, m[:col].to_i
+  end
+  def rowget
+    row, col = self.pos
+    return row
+  end
+  def colget
+    row, col = self.pos
+    return col
   end
   def up(n = nil) # Move cursor up by n
     print(CSI + "#{(n || 1)}A")
@@ -260,12 +268,16 @@ def getstr # A custom Readline-like function
   @pos  = 0
   chr   = ""
   @history.unshift("")
+  @row0, p = @c.pos
   while chr != "ENTER" # Keep going with readline until user presses ENTER
     @ci   = nil
     lift  = false
     right = false
+    # The actual printing og the command line
+    @c.row(@row0)
     @c.clear_line
     print @prompt
+    @c.clear_screen_down
     row, @pos0 = @c.pos
     #@history[0] = "" if @history[0].nil?
     print cmd_check(@history[0])
@@ -278,7 +290,15 @@ def getstr # A custom Readline-like function
       print @ciprompt.c(@c_stamp)
       right = true
     end
-    @c.col(@pos0 + @pos)
+    c_col = @pos0 + @pos
+    c_row = @row0 + c_col/(@maxcol)
+    c_col == 0 ? @c.row(c_row + 1) : @c.row(c_row)
+    if c_col.modulo(@maxcol) == 0
+      @c.col(c_col)
+      @c.row(@c.rowget - 1)
+    else
+      @c.col(c_col.modulo(@maxcol))
+    end
     chr = getchr
     case chr
     when 'C-G', 'C-C'
@@ -311,6 +331,8 @@ def getstr # A custom Readline-like function
         end
         lift = false
       end
+      @c.row(@row0)
+      @c.clear_screen_down
     when 'DOWN'  # Go down in history
       if lift
         @history.unshift("")
@@ -330,6 +352,8 @@ def getstr # A custom Readline-like function
         @pos = @history[0].length
       end
       lift = false
+      @c.row(@row0)
+      @c.clear_screen_down
     when 'RIGHT' # Move right on the readline
       if right 
         if lift
@@ -356,6 +380,7 @@ def getstr # A custom Readline-like function
         @history[0][@pos] = ""
       end
       lift = true
+      @c.clear_line_after
     when 'WBACK' # Delete one word to the left (Ctrl-W)
       unless @pos == @pos0
         until @history[0][@pos - 1] == " " or @pos == 0
@@ -368,6 +393,7 @@ def getstr # A custom Readline-like function
         end
       end
       lift = true
+      @c.clear_line_after
     when 'C-Y'   # Copy command line to primary selection
       system("echo -n '#{@history[0]}' | xclip")
       puts "\n#{Time.now.strftime("%H:%M:%S")}: Copied to primary selection (paste with middle buttoni)".c(@c_stamp)
@@ -406,7 +432,7 @@ def getstr # A custom Readline-like function
       @pos += 1
     end
   end
-  @c.col(@pos0 + @history[0].length)
+  #@c.col(@pos0 + @history[0].length)
   @c.clear_screen_down
 end
 def tab(type)
@@ -545,16 +571,10 @@ def hist_clean # Clean up @history
 end
 def cmd_check(str) # Check if each element on the readline matches commands, nicks, paths; color them
   return if str.nil?
- #elements = str.scan(/[^\s']+|'.+?'/)
- #elements.map! do |el|
- # .... the ifs
- #elements.join(" ")
   str.gsub(/(?:\S'[^']*'|[^ '])+/) do |el|
     if @exe.include?(el)
       el.c(@c_cmd)
     elsif el == "cd"
-      el.c(@c_cmd)
-    elsif File.executable?(el.gsub("'", ""))
       el.c(@c_cmd)
     elsif File.exist?(el.gsub("'", ""))
       el.c(@c_path)
