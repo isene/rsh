@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.6"
+@version    = "2.6.1"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -312,6 +312,7 @@ def getstr # A custom Readline-like function
       exit
     when 'C-L'   # Clear screen and set position to top of the screen
       @c.row(1)
+      @row0 = 1
       @c.clear_screen_down
     when 'UP'    # Go up in history
       if @stk == 0 and @history[0].length > 0
