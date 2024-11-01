@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.6.1"
+@version    = "2.6.2"
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -433,7 +433,6 @@ def getstr # A custom Readline-like function
       @pos += 1
     end
   end
-  #@c.col(@pos0 + @history[0].length)
   @c.clear_screen_down
 end
 def tab(type)
@@ -547,6 +546,7 @@ def tab(type)
     end
   end
   @c.clear_screen_down
+  @row0 = @c_row
   @c.row(@c_row)
   @c.col(@c_col)
   @history[0] = @newhist0
