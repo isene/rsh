@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.6.2"
+@version    = "2.6.3" # Code clean-up
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -50,18 +50,6 @@ module Cursor # Terminal cursor movement ANSI codes (thanks to https://github.co
     row, col = self.pos
     return col
   end
-  def up(n = nil) # Move cursor up by n
-    print(CSI + "#{(n || 1)}A")
-  end
-  def down(n = nil) # Move the cursor down by n
-    print(CSI + "#{(n || 1)}B")
-  end
-  def left(n = nil) # Move the cursor backward by n
-    print(CSI + "#{n || 1}D")
-  end
-  def right(n = nil) # Move the cursor forward by n
-    print(CSI + "#{n || 1}C")
-  end
   def col(n = nil) # Cursor moves to nth position horizontally in the current line
     print(CSI + "#{n || 1}G")
   end
@@ -71,35 +59,17 @@ module Cursor # Terminal cursor movement ANSI codes (thanks to https://github.co
   def next_line # Move cursor down to beginning of next line
     print(CSI + 'E' + CSI + "1G")
   end
-  def prev_line # Move cursor up to beginning of previous line
-    print(CSI + 'A' +  CSI + "1G")
-  end
-  def clear_char(n = nil) # Erase n characters from the current cursor position
-    print(CSI + "#{n}X")
-  end
   def clear_line # Erase the entire current line and return to beginning of the line
     print(CSI + '2K' +  CSI + "1G")
   end
-  def clear_line_before # Erase from the beginning of the line up to and including the current cursor position.
-    print(CSI + '1K')
-  end
   def clear_line_after # Erase from the current position (inclusive) to the end of the line
     print(CSI + '0K')
-  end
-  def scroll_up # Scroll display up one line
-    print(ESC + 'M')
   end
   def scroll_down # Scroll display down one line
     print(ESC + 'D')
   end
   def clear_screen_down
     print(CSI + 'J')
-  end
-end
-def stdin_clear
-  begin
-    $stdin.getc while $stdin.ready?
-  rescue
   end
 end
 
@@ -260,7 +230,6 @@ def getchr # Process key presses
   when /[[:print:]]/  then chr = c
   else chr = ""
   end
-  #stdin_clear
   return chr
 end
 def getstr # A custom Readline-like function
