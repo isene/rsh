@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.6.3" # Code clean-up
+@version    = "2.7.0" # Major release: Ruby functions, job control, command substitution, login shell support
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -107,6 +107,9 @@ begin # Initialization
   @runmailcap  = false
   # Variable initializations
   @dirs        = ["."]*10
+  @jobs        = {}                       # Background jobs tracking
+  @job_id      = 0                        # Job counter
+  @last_exit   = 0                        # Last command exit status
   def pre_cmd; end                        # User-defined function to be run BEFORE command execution
   def post_cmd; end                       # User-defined function to be run AFTER  command execution
 end
@@ -146,8 +149,23 @@ end
   * `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
   * `:nick?` will list all command nicks and general nicks (you can edit your nicks in .rshrc)
   * `:history` will list the command history, while `:rmhistory` will delete the history
+  * `:jobs` will list background jobs, `:fg [job_id]` brings jobs to foreground, `:bg [job_id]` resumes stopped jobs
+  * `:defun 'func(args) = code'` defines Ruby functions callable as shell commands
+  * `:defun?` lists all user-defined functions, `:defun '-func'` removes functions
   * `:version` Shows the rsh version number and the last published gem file version
   * `:help` will display this help text
+  
+  Background jobs:
+  * Use `command &` to run commands in background
+  * Use `:jobs` to list active background jobs  
+  * Use `:fg` or `:fg job_id` to bring jobs to foreground
+  * Use `Ctrl-Z` to suspend running jobs, `:bg job_id` to resume them
+  
+  Ruby Functions:
+  * Define with `:defun 'myls(*args) = Dir.glob("*").each {|f| puts f}'`
+  * Call like any shell command: `myls` or `myls arg1 arg2`
+  * Functions have full access to Ruby stdlib and rsh internals
+  * Remove with `:defun '-myls'` and list with `:defun?`
   
 HELP
 
@@ -224,6 +242,7 @@ def getchr # Process key presses
   when "" then chr = "C-T"
   when "" then chr = "C-Y"
   when "" then chr = "WBACK"
+  when "\u001A" then chr = "C-Z"
   when "" then chr = "LDEL"
   when "\r" then chr = "ENTER"
   when "\t" then chr = "TAB"
@@ -367,6 +386,14 @@ def getstr # A custom Readline-like function
     when 'C-Y'   # Copy command line to primary selection
       system("echo -n '#{@history[0]}' | xclip")
       puts "\n#{Time.now.strftime("%H:%M:%S")}: Copied to primary selection (paste with middle buttoni)".c(@c_stamp)
+    when 'C-Z'   # Suspend current process (background job)
+      if @current_pid
+        puts "\n[#{@job_id}] Suspended #{@current_pid}"
+        Process.kill("STOP", @current_pid)
+        @jobs[@job_id] = {pid: @current_pid, cmd: @cmd, status: :stopped}
+      else
+        puts "\nNo active job to suspend"
+      end
     when 'C-K'   # Kill/delete that entry in the history
       @history.delete_at(@stk)
       @stk -= 1
@@ -555,6 +582,8 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
       el.c(@c_nick)
     elsif @gnick.include?(el)
       el.c(@c_gnick)
+    elsif self.respond_to?(el) && singleton_class.instance_methods(false).include?(el.to_sym)
+      el.c(@c_nick).b  # Ruby functions in bold nick color
     elsif el[0] == "-"
       el.c(@c_switch)
     else
@@ -628,12 +657,165 @@ def dirs
     puts "#{i}: #{e}"
   end
 end
+def jobs
+  puts "Active jobs:"
+  @jobs.each do |id, job|
+    begin
+      Process.kill(0, job[:pid])  # Check if process exists
+      puts "[#{id}] #{job[:pid]} #{job[:status]} #{job[:cmd]}"
+    rescue Errno::ESRCH
+      @jobs.delete(id)  # Clean up dead jobs
+    end
+  end
+end
+def fg(job_id = nil)
+  job_id ||= @jobs.keys.max
+  return puts "No jobs" if job_id.nil?
+  job = @jobs[job_id]
+  return puts "Job #{job_id} not found" unless job
+  puts "Bringing job #{job_id} to foreground: #{job[:cmd]}"
+  begin
+    if job[:status] == :stopped
+      Process.kill("CONT", job[:pid])
+    end
+    @current_pid = job[:pid]
+    Process.wait(job[:pid])
+    @jobs.delete(job_id)
+    @current_pid = nil
+  rescue Errno::ECHILD, Errno::ESRCH
+    @jobs.delete(job_id)
+    @current_pid = nil
+  end
+end
+def bg(job_id = nil)
+  job_id ||= @jobs.keys.max
+  return puts "No jobs" if job_id.nil?
+  job = @jobs[job_id]
+  return puts "Job #{job_id} not found" unless job
+  return puts "Job #{job_id} already running" if job[:status] == :running
+  puts "Resuming job #{job_id} in background: #{job[:cmd]}"
+  begin
+    Process.kill("CONT", job[:pid])
+    @jobs[job_id][:status] = :running
+  rescue Errno::ESRCH
+    @jobs.delete(job_id)
+    puts "Job #{job_id} no longer exists"
+  end
+end
+def defun(func_def)  # Define a Ruby function like: `:defun "myls(*args) = Dir.glob('*').each {|f| puts f}"`
+  if func_def.match(/^\s*-/)
+    # Remove function
+    func_name = func_def.sub(/^\s*-/, '')
+    if self.respond_to?(func_name)
+      singleton_class.remove_method(func_name.to_sym)
+      puts "Function '#{func_name}' removed"
+    else
+      puts "Function '#{func_name}' not found"
+    end
+  else
+    # Define function
+    # Extract function name, params, and body from "name(params) = body" format
+    if func_def =~ /^(\w+)\s*\(([^)]*)\)\s*=\s*(.+)$/
+      func_name = $1
+      func_params = $2
+      func_body = $3
+      
+      begin
+        eval_code = "def #{func_name}(#{func_params}); #{func_body}; end"
+        puts "  DEBUG: Evaluating: #{eval_code}" if ENV['RSH_DEBUG']
+        singleton_class.class_eval(eval_code)
+        puts "Function '#{func_name}' defined"
+        puts "  DEBUG: Method created? #{respond_to?(func_name)}" if ENV['RSH_DEBUG']
+      rescue SyntaxError => e
+        puts "Syntax error in function definition: #{e}"
+      rescue => e
+        puts "Error in function definition: #{e}"
+      end
+    else
+      puts "Invalid function format. Use: name(params) = body"
+    end
+  end
+  rshrc
+end
+def defun?  # Show all user-defined functions
+  puts "User-defined Ruby functions:"
+  # Get only methods defined by defun, excluding built-ins and rsh internals
+  all_methods = singleton_class.instance_methods(false)
+  puts "  All singleton methods: #{all_methods}"
+  excluded = [:defun, :defun?, :execute_conditional, :expand_braces]
+  methods = all_methods - excluded
+  if methods.empty?
+    puts "  (none defined after filtering)"
+  else
+    methods.each do |method|
+      puts "  #{method}"
+    end
+  end
+end
+def execute_conditional(cmd_line)
+  # Split on && and || while preserving the operators
+  parts = cmd_line.split(/(\s*&&\s*|\s*\|\|\s*)/)
+  
+  result = true
+  i = 0
+  while i < parts.length
+    command = parts[i].strip
+    next if command.empty?
+    
+    if command == '&&'
+      i += 1
+      next unless result  # Skip if previous command failed
+    elsif command == '||'
+      i += 1
+      next if result      # Skip if previous command succeeded
+    else
+      # Execute the command
+      success = system(command)
+      result = success
+      puts " Command failed: #{command} (exit #{$?.exitstatus})" unless success
+    end
+    i += 1
+  end
+end
+def expand_braces(str)
+  # Simple brace expansion: {a,b,c} -> a b c
+  str.gsub(/\{([^}]+)\}/) do |match|
+    items = $1.split(',').map(&:strip)
+    items.join(' ')
+  end
+end
 
 # INITIAL SETUP
 begin # Load .rshrc and populate @history
   trap "SIGINT" do end
+  trap "SIGHUP" do 
+    rshrc
+    exit
+  end
+  trap "SIGTERM" do 
+    rshrc
+    exit
+  end
   firstrun unless File.exist?(Dir.home+'/.rshrc') # Initial loading - to get history
-  load(Dir.home+'/.rshrc') 
+  load(Dir.home+'/.rshrc')
+  # Load login shell files if rsh is running as login shell
+  if ENV['LOGIN_SHELL'] or $0 == "-rsh" or ARGV.include?('-l') or ARGV.include?('--login')
+    ['/etc/profile', Dir.home+'/.profile', Dir.home+'/.bash_profile', Dir.home+'/.bashrc'].each do |f|
+      if File.exist?(f)
+        puts "Loading #{f}..." if ENV['RSH_DEBUG']
+        begin
+          # Source shell files by extracting export statements
+          File.readlines(f).each do |line|
+            if line =~ /^\s*export\s+(\w+)=(.*)/
+              ENV[$1] = $2.gsub(/['"]/, '')
+            end
+          end
+        rescue => e
+          puts "Warning: Could not source #{f}: #{e}" if ENV['RSH_DEBUG']
+        end
+      end
+    end
+  end 
   ENV["SHELL"] = __FILE__
   ENV["TERM"]  = "rxvt-unicode-256color"
   ENV["PATH"]  ? ENV["PATH"] += ":" : ENV["PATH"] = ""
@@ -705,41 +887,92 @@ loop do
     elsif @cmd == '#' # List previous directories
       dirs
     else # Execute command
-      ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
-      @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
-      ga = @gnick.transform_keys {|k| /\b(?<!-)#{Regexp.escape k}\b/}
-      @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
-      @cmd = "~" if @cmd == "cd"
-      @cmd.sub!(/^cd (\S*).*/, '\1')
-      @cmd = Dir.home if @cmd == "~"
-      @cmd = @dirs[1] if @cmd == "-"
-      @cmd = @dirs[@cmd.to_i] if @cmd =~ /^\d$/
-      dir  = @cmd.strip.sub(/~/, Dir.home)
-      if Dir.exist?(dir)
-        Dir.chdir(dir) 
-        system("git status .") if Dir.exist?(".git")
+      # Check if it's a user-defined Ruby function FIRST (before any expansions)
+      cmd_parts = @cmd.split(/\s+/)
+      func_name = cmd_parts[0]
+      if self.respond_to?(func_name) && singleton_class.instance_methods(false).include?(func_name.to_sym)
+        begin
+          args = cmd_parts[1..]
+          puts "DEBUG: Calling #{func_name} with args: #{args}" if ENV['RSH_DEBUG']
+          result = self.send(func_name, *args)
+          puts "DEBUG: Result: #{result.inspect}" if ENV['RSH_DEBUG']
+          puts result unless result.nil?
+        rescue => e
+          puts "Error calling function '#{func_name}': #{e}"
+        end
       else
-        puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
-        if @cmd == "f" # fzf integration (https://github.com/junegunn/fzf)
-          res = `fzf`.chomp
-          Dir.chdir(File.dirname(res))
-        elsif File.exist?(@cmd) and not File.executable?(@cmd)
-          if File.read(@cmd).force_encoding("UTF-8").valid_encoding?
-            system("#{ENV['EDITOR']} #{@cmd}") # Try open with user's editor
-          else
-            if @runmailcap
-              Thread.new { system("run-mailcap #{@cmd} 2>/dev/null") }
+        # Handle conditional execution (&& and ||)
+        if @cmd.include?('&&') || @cmd.include?('||')
+          execute_conditional(@cmd)
+          next
+        end
+        # Expand brace expansion {a,b,c}
+        @cmd = expand_braces(@cmd)
+        # Expand command substitution $(command) and backticks
+        @cmd = @cmd.gsub(/\$\(([^)]+)\)/) { `#{$1}`.chomp }
+        @cmd = @cmd.gsub(/`([^`]+)`/) { `#{$1}`.chomp }
+        # Expand environment variables and exit status
+        @cmd = @cmd.gsub(/\$\?/) { @last_exit.to_s }
+        @cmd = @cmd.gsub(/\$(\w+)|\$\{(\w+)\}/) { ENV[$1 || $2] || '' }
+        # Expand tilde
+        @cmd = @cmd.gsub(/~/, Dir.home)
+        ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
+        @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
+        ga = @gnick.transform_keys {|k| /\b(?<!-)#{Regexp.escape k}\b/}
+        @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
+        @cmd = "~" if @cmd == "cd"
+        @cmd.sub!(/^cd (\S*).*/, '\1')
+        @cmd = Dir.home if @cmd == "~"
+        @cmd = @dirs[1] if @cmd == "-"
+        @cmd = @dirs[@cmd.to_i] if @cmd =~ /^\d$/
+        # Check if it's a directory to change to
+        dir = @cmd.strip.sub(/~/, Dir.home)
+        if Dir.exist?(dir)
+          Dir.chdir(dir) 
+          system("git status .") if Dir.exist?(".git")
+        else
+          puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
+          if @cmd == "f" # fzf integration (https://github.com/junegunn/fzf)
+            res = `fzf`.chomp
+            Dir.chdir(File.dirname(res))
+          elsif File.exist?(@cmd) and not File.executable?(@cmd) and not @cmd.include?(" ")
+            # Only auto-open files if it's a single filename (no spaces = no command with args)
+            if File.read(@cmd).force_encoding("UTF-8").valid_encoding?
+              system("#{ENV['EDITOR']} #{@cmd}") # Try open with user's editor
             else
-              Thread.new { system("xdg-open #{@cmd} 2>/dev/null") }
+              if @runmailcap
+                Thread.new { system("run-mailcap #{@cmd} 2>/dev/null") }
+              else
+                Thread.new { system("xdg-open #{@cmd} 2>/dev/null") }
+              end
             end
-          end
-        else 
-          begin
-            pre_cmd
-            puts " Not executed: #{@cmd}" unless system (@cmd) # Try execute the command
-            post_cmd
-          rescue StandardError => err
-            puts "\n#{err}"
+          else 
+            begin
+              pre_cmd
+              # Handle background jobs
+              if @cmd.end_with?(' &')
+                @cmd = @cmd[0..-3]  # Remove the &
+                @job_id += 1
+                # Handle pipes and redirections in background
+                if @cmd.include?('|') || @cmd.include?('>') || @cmd.include?('<')
+                  pid = spawn(@cmd, pgroup: true)
+                else
+                  pid = spawn(@cmd)
+                end
+                @jobs[@job_id] = {pid: pid, cmd: @cmd, status: :running}
+                puts "[#{@job_id}] #{pid} #{@cmd}"
+              else
+                # Better handling of pipes and redirections  
+                @current_pid = spawn(@cmd)
+                Process.wait(@current_pid)
+                @last_exit = $?.exitstatus
+                @current_pid = nil
+                puts " Command failed: #{@cmd} (exit #{@last_exit})" unless @last_exit == 0
+              end
+              post_cmd
+            rescue StandardError => err
+              puts "\nError: #{err}"
+            end
           end
         end
       end

@@ -18,6 +18,8 @@ Or simply `gem install ruby-shell`.
 [![rsh screencast](/img/rsh-screencast.png)](https://youtu.be/4P2z8oSo1u4)
 
 # Features
+
+## Core Shell Features
 * Aliases (called nicks in rsh) - both for commands and general nicks
 * Syntax highlighting, matching nicks, system commands and valid dirs/files
 * Tab completions for nicks, system commands, command switches and dirs/files
@@ -30,6 +32,22 @@ Or simply `gem install ruby-shell`.
 * rsh specific commands and full set of Ruby commands available via :<command>
 * All colors are themeable in .rshrc (see github link for possibilities)
 * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
+
+## NEW in v2.7.0 - Ruby Functions ⭐
+* **Define Ruby functions as shell commands**: `:defun 'weather(*args) = system("curl -s wttr.in/#{args[0] || \"oslo\"}")'`
+* **Call like any shell command**: `weather london`
+* **Full Ruby power**: Access to Ruby stdlib, file operations, JSON parsing, web requests, etc.
+* **Function management**: `:defun?` to list, `:defun '-name'` to remove
+* **Syntax highlighting**: Ruby functions highlighted in bold
+
+## Advanced Shell Features
+* **Job Control**: Background jobs (`command &`), job suspension (`Ctrl-Z`), process management
+* **Job Management**: `:jobs`, `:fg [id]`, `:bg [id]` commands
+* **Command Substitution**: `$(date)` and backtick support  
+* **Variable Expansion**: `$HOME`, `$USER`, `$?` (exit status)
+* **Conditional Execution**: `cmd1 && cmd2 || cmd3`
+* **Brace Expansion**: `{a,b,c}` expands to `a b c`
+* **Login Shell Support**: Proper signal handling and profile loading
   
 Special functions/integrations:
 * Use `r` to launch rtfm (https://github.com/isene/RTFM) - if you have it installed
@@ -42,8 +60,17 @@ Special commands:
 * `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
 * `:nick?` will list all command nicks and general nicks (you can edit your nicks in .rshrc)
 * `:history` will list the command history, while `:rmhistory` will delete the history
+* `:jobs` will list background jobs, `:fg [job_id]` brings jobs to foreground, `:bg [job_id]` resumes stopped jobs
+* `:defun 'func(args) = code'` defines Ruby functions callable as shell commands
+* `:defun?` lists all user-defined functions, `:defun '-func'` removes functions
 * `:version` Shows the rsh version number and the last published gem file version
 * `:help` will display this help text
+
+Background jobs:
+* Use `command &` to run commands in background
+* Use `:jobs` to list active background jobs  
+* Use `:fg` or `:fg job_id` to bring jobs to foreground
+* Use `Ctrl-Z` to suspend running jobs, `:bg job_id` to resume them
 
 ## Moving around
 While you `cd` around to different directories, you can see the last 10 directories visited via the command `:dirs` or the convenient shortcut `#`. Entering the number in the list (like `6` and ENTER) will jump you to that directory. Entering `-` will jump you back to the previous dir (equivalent of `1`. Entering `~` will get you to your home dir. If you want to bookmark a special directory, you can do that via a general nick like this: `:gnick "x = /path/to/a/dir/"` - this would bookmark the directory to the single letter `x`.
@@ -61,6 +88,59 @@ If you press `ENTER` after writing or tab-completing to a file, rsh will try to 
 
 ## History
 Show the history with `:history`. Redo a history command with an exclamation mark and the number corresponding to the position in the history, like `!5` would do the 5th history command again. To delete a specific entry in history, hit `UP` and move up to that entry and hit `Ctrl-k` (for "kill").
+
+## Ruby Functions - The Power Feature ⭐
+
+rsh's unique Ruby functions let you define custom shell commands using the full power of Ruby:
+
+### Basic Examples
+```bash
+# File operations
+:defun 'count(*args) = puts Dir.glob(args[0] || "*").length'
+count *.rb
+
+# System monitoring  
+:defun 'mem = puts `free -h`.lines[1].split[2]'
+mem
+
+# JSON pretty-printing
+:defun 'jsonpp(file) = require "json"; puts JSON.pretty_generate(JSON.parse(File.read(file)))'
+jsonpp config.json
+```
+
+### Advanced Examples
+```bash
+# Network tools
+:defun 'ports = puts `netstat -tlnp`.lines.grep(/LISTEN/).map{|l| l.split[3]}'
+ports
+
+# Git helpers
+:defun 'branches = puts `git branch`.lines.map{|l| l.strip.sub("* ", "")}'
+branches
+
+# Directory analysis
+:defun 'sizes(*args) = Dir.glob(args[0] || "*").each{|f| puts "#{File.size(f).to_s.rjust(8)} #{f}" if File.file?(f)}'
+sizes
+
+# Weather (using external API)
+:defun 'weather(*args) = system("curl -s wttr.in/#{args[0] || \"oslo\"}")'
+weather london
+```
+
+### Function Management
+```bash
+:defun?           # List all defined functions
+:defun '-myls'    # Remove a function
+```
+
+Ruby functions have access to:
+- Full Ruby standard library
+- Shell environment variables via `ENV`
+- rsh internals like `@history`, `@dirs`
+- File system operations
+- Network requests
+- JSON/XML parsing
+- And everything else Ruby can do!
 
 ## Integrations
 rsh is integrated with the [rtfm file manager](https://github.com/isene/RTFM), with [fzf](https://github.com/junegunn/fzf) and with the programming language [XRPN](https://github.com/isene/xrpn). 
