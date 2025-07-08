@@ -33,7 +33,13 @@ Or simply `gem install ruby-shell`.
 * All colors are themeable in .rshrc (see github link for possibilities)
 * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
 
-## NEW in v2.7.0 - Ruby Functions ⭐
+## NEW in v2.8.0 - Enhanced Help System & Nick Management ⭐
+* **Two-column help display**: Compact, organized help that fits on one screen
+* **New `:info` command**: Shows introduction and feature overview
+* **`:nickdel` and `:gnickdel`**: Intuitive commands to delete nicks and gnicks
+* **Improved help organization**: Quick reference for keyboard shortcuts, commands, and features
+
+## Ruby Functions (v2.7.0)
 * **Define Ruby functions as shell commands**: `:defun 'weather(*args) = system("curl -s wttr.in/#{args[0] || \"oslo\"}")'`
 * **Call like any shell command**: `weather london`
 * **Full Ruby power**: Access to Ruby stdlib, file operations, JSON parsing, web requests, etc.
@@ -58,13 +64,16 @@ Special functions/integrations:
 Special commands:
 * `:nick 'll = ls -l'` to make a command alias (ll) point to a command (ls -l)
 * `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
+* `:nickdel 'name'` to delete a command nick (or use `:nick '-name'`)
+* `:gnickdel 'name'` to delete a general nick (or use `:gnick '-name'`)
 * `:nick?` will list all command nicks and general nicks (you can edit your nicks in .rshrc)
 * `:history` will list the command history, while `:rmhistory` will delete the history
 * `:jobs` will list background jobs, `:fg [job_id]` brings jobs to foreground, `:bg [job_id]` resumes stopped jobs
 * `:defun 'func(args) = code'` defines Ruby functions callable as shell commands
 * `:defun?` lists all user-defined functions, `:defun '-func'` removes functions
+* `:info` shows introduction and feature overview
 * `:version` Shows the rsh version number and the last published gem file version
-* `:help` will display this help text
+* `:help` will display a compact command reference in two columns
 
 Background jobs:
 * Use `command &` to run commands in background

@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.7.0" # Major release: Ruby functions, job control, command substitution, login shell support
+@version    = "2.8.0" # Feature release: nickdel functions, improved help system, info command
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -115,14 +115,15 @@ begin # Initialization
 end
 
 # HELP TEXT
-@help = <<~HELP
+@info = <<~INFO
 
   Hello #{@user}, welcome to rsh - the Ruby SHell. 
   
   rsh does not attempt to compete with the grand old shells like bash and zsh. 
   It serves the specific needs and wants of its author. If you like it, then feel free 
-  to ask for more or different features here: https://github.com/isene/rsh. Features:
-
+  to ask for more or different features here: https://github.com/isene/rsh.
+  
+  Features:
   * Aliases (called nicks in rsh) - both for commands and general nicks
   * Syntax highlighting, matching nicks, system commands and valid dirs/files
   * Tab completions for nicks, system commands, command switches and dirs/files
@@ -137,41 +138,18 @@ end
   * rsh specific commands and full set of Ruby commands available via :<command>
   * All colors are themeable in .rshrc (see github link for possibilities)
   * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
+  
+  Use `:help` for command reference.
+  
+INFO
 
-  Special functions/integrations:
-  * Use `r` to launch rtfm (https://github.com/isene/RTFM) - if you have it installed
-  * Use `f` to launch fzf (https://github.com/junegunn/fzf) - if you have it installed
-  * Use `=` followed by xrpn commands separated by commas or double-spaces (https://github.com/isene/xrpn)
-  * Use `:` followed by a Ruby expression to access the whole world of Ruby
+@help = <<~HELP
 
-  Special commands:
-  * `:nick 'll = ls -l'` to make a command alias (ll) point to a command (ls -l)
-  * `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
-  * `:nick?` will list all command nicks and general nicks (you can edit your nicks in .rshrc)
-  * `:history` will list the command history, while `:rmhistory` will delete the history
-  * `:jobs` will list background jobs, `:fg [job_id]` brings jobs to foreground, `:bg [job_id]` resumes stopped jobs
-  * `:defun 'func(args) = code'` defines Ruby functions callable as shell commands
-  * `:defun?` lists all user-defined functions, `:defun '-func'` removes functions
-  * `:version` Shows the rsh version number and the last published gem file version
-  * `:help` will display this help text
-  
-  Background jobs:
-  * Use `command &` to run commands in background
-  * Use `:jobs` to list active background jobs  
-  * Use `:fg` or `:fg job_id` to bring jobs to foreground
-  * Use `Ctrl-Z` to suspend running jobs, `:bg job_id` to resume them
-  
-  Ruby Functions:
-  * Define with `:defun 'myls(*args) = Dir.glob("*").each {|f| puts f}'`
-  * Call like any shell command: `myls` or `myls arg1 arg2`
-  * Functions have full access to Ruby stdlib and rsh internals
-  * Remove with `:defun '-myls'` and list with `:defun?`
-  
 HELP
 
 # GENERIC FUNCTIONS
 def firstrun
-  puts @help
+  puts @info
   puts "Since there is no rsh configuration file (.rshrc), I will help you set it up to suit your needs.\n\n"
   puts "The prompt you see now is the very basic rsh prompt:"
   print "#{@prompt} (press ENTER)"
@@ -610,7 +588,93 @@ end
 
 # RSH FUNCTIONS
 def help
-  puts @help
+  # Get terminal width
+  term_width = @maxcol || 80
+  col_width = 48  # Fixed width for left column
+  
+  # Helper function to strip ANSI codes for length calculation
+  def strip_ansi(str)
+    str.gsub(/\001?\e\[[0-9;]*m\002?/, '')
+  end
+  
+  left_col = []
+  right_col = []
+  
+  # Left column content
+  left_col << "KEYBOARD SHORTCUTS:".c(@c_prompt).b
+  left_col << "RIGHT/Ctrl-F    Accept suggestion"
+  left_col << "UP/DOWN         Navigate history"
+  left_col << "TAB             Tab complete"
+  left_col << "Ctrl-Y          Copy to clipboard"
+  left_col << "Ctrl-D          Exit + save .rshrc"
+  left_col << "Ctrl-E          Exit without save"
+  left_col << "Ctrl-L          Clear screen"
+  left_col << "Ctrl-Z          Suspend job"
+  left_col << "Ctrl-C/G        Clear line"
+  left_col << "Ctrl-K          Delete history item"
+  left_col << "Ctrl-U          Clear line"
+  left_col << "Ctrl-W          Delete previous word"
+  left_col << ""
+  left_col << "SPECIAL COMMANDS:".c(@c_prompt).b
+  left_col << ":nick 'll = ls -l'  Command alias"
+  left_col << ":gnick 'h = /home'  General alias"
+  left_col << ":nickdel 'name'     Delete nick"
+  left_col << ":gnickdel 'name'    Delete gnick"
+  left_col << ":nick?              List all nicks"
+  left_col << ":history            Show history"
+  left_col << ":rmhistory          Clear history"
+  left_col << ":info               About rsh"
+  left_col << ":version            Version info"
+  left_col << ":help               This help"
+  
+  # Right column content
+  right_col << "RUBY FUNCTIONS:".c(@c_prompt).b
+  right_col << ":defun 'f(x) = x*2' Define function"
+  right_col << ":defun?             List functions"
+  right_col << ":defun '-f'         Remove function"
+  right_col << "Call as: f 5        (returns 10)"
+  right_col << ""
+  right_col << "JOB CONTROL:".c(@c_prompt).b
+  right_col << "command &           Background job"
+  right_col << ":jobs               List jobs"
+  right_col << ":fg [id]            Foreground job"
+  right_col << ":bg [id]            Resume in bg"
+  right_col << ""
+  right_col << "INTEGRATIONS:".c(@c_prompt).b
+  right_col << "r                   Launch rtfm"
+  right_col << "f                   Launch fzf"
+  right_col << "= <expr>            xrpn calculator"
+  right_col << ":<ruby code>        Execute Ruby"
+  right_col << ""
+  right_col << "EXPANSIONS:".c(@c_prompt).b
+  right_col << "~                   Home directory"
+  right_col << "$VAR, ${VAR}        Environment var"
+  right_col << "$?                  Exit status"
+  right_col << "$(cmd), `cmd`       Command subst"
+  right_col << "{a,b,c}             Brace expansion"
+  right_col << "cmd1 && cmd2        Conditional"
+  right_col << "cmd1 || cmd2        Alternative"
+  
+  # Pad columns to same length
+  max_lines = [left_col.length, right_col.length].max
+  left_col.fill("", left_col.length...max_lines)
+  right_col.fill("", right_col.length...max_lines)
+  
+  # Print in two columns
+  puts
+  max_lines.times do |i|
+    left_text = left_col[i].to_s
+    right_text = right_col[i].to_s
+    # Calculate padding based on visible characters (without ANSI codes)
+    visible_length = strip_ansi(left_text).length
+    padding = col_width - visible_length
+    padding = 0 if padding < 0
+    puts "  #{left_text}#{' ' * padding} #{right_text}"
+  end
+  puts
+end
+def info
+  puts @info
 end
 def version
   puts "rsh version = #{@version} (latest RubyGems version is #{Gem.latest_version_for("ruby-shell").version} - https://github.com/isene/rsh)"
@@ -650,6 +714,16 @@ def nick? # Show nicks
   @nick.sort.each {|key, value| puts "  #{key} = #{value}"}
   puts "  General nicks:".c(@c_gnick)
   @gnick.sort.each {|key, value| puts "  #{key} = #{value}"}
+end
+def nickdel(nick_name) # Delete a command nick
+  @nick.delete(nick_name)
+  rshrc
+  puts "Nick '#{nick_name}' deleted"
+end
+def gnickdel(nick_name) # Delete a general/global nick
+  @gnick.delete(nick_name)
+  rshrc
+  puts "General nick '#{nick_name}' deleted"
 end
 def dirs
   puts "Past direactories:"
