@@ -33,7 +33,16 @@ Or simply `gem install ruby-shell`.
 * All colors are themeable in .rshrc (see github link for possibilities)
 * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
 
-## NEW in v2.8.0 - Enhanced Help System & Nick Management ⭐
+## NEW in v2.9.0 - AI Integration ⭐
+* **AI-powered command assistance**: Get help with commands using natural language
+* **`@ <question>`**: Ask questions and get AI-generated text responses
+* **`@@ <request>`**: Describe what you want to do, and AI suggests the command
+* **Smart command suggestion**: AI suggestions appear directly on the command line, ready to execute
+* **Local AI support**: Works with Ollama for privacy-focused local AI
+* **External AI support**: Configure OpenAI or other providers via `.rshrc`
+* **Syntax highlighting**: @ and @@ commands are highlighted in blue
+
+## Enhanced Help System & Nick Management (v2.8.0)
 * **Two-column help display**: Compact, organized help that fits on one screen
 * **New `:info` command**: Shows introduction and feature overview
 * **`:nickdel` and `:gnickdel`**: Intuitive commands to delete nicks and gnicks
@@ -80,6 +89,21 @@ Background jobs:
 * Use `:jobs` to list active background jobs  
 * Use `:fg` or `:fg job_id` to bring jobs to foreground
 * Use `Ctrl-Z` to suspend running jobs, `:bg job_id` to resume them
+
+## AI Configuration
+The AI features work out of the box with Ollama for local AI processing. To set up:
+
+### Local AI (Recommended)
+1. Install Ollama: `curl -fsSL https://ollama.com/install.sh | sh`
+2. Pull a model: `ollama pull llama3.2`
+3. That's it! Use `@ What is the capital of France?` or `@@ list files by size`
+
+### External AI (OpenAI)
+Add to your `.rshrc`:
+```ruby
+@aimodel = "gpt-4"
+@aikey = "your-api-key-here"
+```
 
 ## Moving around
 While you `cd` around to different directories, you can see the last 10 directories visited via the command `:dirs` or the convenient shortcut `#`. Entering the number in the list (like `6` and ENTER) will jump you to that directory. Entering `-` will jump you back to the previous dir (equivalent of `1`. Entering `~` will get you to your home dir. If you want to bookmark a special directory, you can do that via a general nick like this: `:gnick "x = /path/to/a/dir/"` - this would bookmark the directory to the single letter `x`.

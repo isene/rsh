@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.8.0" # Feature release: nickdel functions, improved help system, info command
+@version    = "2.9.0" # Feature release: AI integration with @ and @@ commands
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -109,6 +109,7 @@ begin # Initialization
   @dirs        = ["."]*10
   @jobs        = {}                       # Background jobs tracking
   @job_id      = 0                        # Job counter
+  @ai_suggestion = nil                    # Store AI command suggestion
   @last_exit   = 0                        # Last command exit status
   def pre_cmd; end                        # User-defined function to be run BEFORE command execution
   def post_cmd; end                       # User-defined function to be run AFTER  command execution
@@ -138,6 +139,7 @@ end
   * rsh specific commands and full set of Ruby commands available via :<command>
   * All colors are themeable in .rshrc (see github link for possibilities)
   * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
+  * AI integration: Use @ for text responses and @@ for command suggestions (requires ollama or OpenAI)
   
   Use `:help` for command reference.
   
@@ -234,6 +236,12 @@ def getstr # A custom Readline-like function
   @pos  = 0
   chr   = ""
   @history.unshift("")
+  # Check if we have an AI suggestion to pre-fill
+  if @ai_suggestion
+    @history[0] = @ai_suggestion
+    @pos = @ai_suggestion.length
+    @ai_suggestion = nil
+  end
   @row0, p = @c.pos
   while chr != "ENTER" # Keep going with readline until user presses ENTER
     @ci   = nil
@@ -547,6 +555,14 @@ def hist_clean # Clean up @history
 end
 def cmd_check(str) # Check if each element on the readline matches commands, nicks, paths; color them
   return if str.nil?
+  
+  # Special handling for @ and @@ commands
+  if str =~ /^(@@?)\s+(.*)$/
+    prefix = $1
+    rest = $2
+    return prefix.c(4) + " " + rest  # Color @ or @@ in blue (4), rest uncolored
+  end
+  
   str.gsub(/(?:\S'[^']*'|[^ '])+/) do |el|
     if @exe.include?(el)
       el.c(@c_cmd)
@@ -645,6 +661,10 @@ def help
   right_col << "f                   Launch fzf"
   right_col << "= <expr>            xrpn calculator"
   right_col << ":<ruby code>        Execute Ruby"
+  right_col << ""
+  right_col << "AI FEATURES:".c(@c_prompt).b
+  right_col << "@ <question>        AI text response"
+  right_col << "@@ <request>        AI command → prompt"
   right_col << ""
   right_col << "EXPANSIONS:".c(@c_prompt).b
   right_col << "~                   Home directory"
@@ -859,6 +879,226 @@ def expand_braces(str)
   end
 end
 
+# AI INTEGRATION FUNCTIONS
+def get_ollama_model
+  begin
+    # Try to get list of available models
+    output = `ollama list 2>/dev/null`
+    return nil if output.empty? || $?.exitstatus != 0
+    
+    # Parse the output to find a suitable model
+    lines = output.split("\n")
+    return nil if lines.length < 2
+    
+    # Skip header line and get first available model
+    model_line = lines[1]
+    return nil if model_line.nil?
+    
+    # Extract model name (first column)
+    model_name = model_line.split(/\s+/)[0]
+    return model_name
+  rescue => e
+    return nil
+  end
+end
+
+def ai_query(prompt)
+  # Get AI model configuration
+  model = @aimodel || nil
+  key = @aikey || nil
+  
+  if model.nil? || model.empty?
+    # Try ollama first
+    if File.exist?("/usr/local/bin/ollama") || File.exist?("/usr/bin/ollama") || system("command -v ollama >/dev/null 2>&1")
+      begin
+        require 'json'
+        require 'net/http'
+        
+        # First, get available models
+        ollama_model = get_ollama_model()
+        return ai_setup_help unless ollama_model
+        
+        uri = URI('http://localhost:11434/api/generate')
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.read_timeout = 30
+        
+        request = Net::HTTP::Post.new(uri)
+        request['Content-Type'] = 'application/json'
+        request.body = {
+          model: ollama_model,
+          prompt: prompt,
+          stream: false,
+          options: {
+            num_predict: 200
+          }
+        }.to_json
+        
+        response = http.request(request)
+        if response.code == '200'
+          result = JSON.parse(response.body)
+          return result['response']
+        else
+          return ai_setup_help
+        end
+      rescue => e
+        return ai_setup_help
+      end
+    else
+      return ai_setup_help
+    end
+  else
+    # Use external model
+    if model =~ /^gpt/i && key
+      begin
+        require 'json'
+        require 'net/http'
+        uri = URI('https://api.openai.com/v1/chat/completions')
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = true
+        http.read_timeout = 30
+        
+        request = Net::HTTP::Post.new(uri)
+        request['Content-Type'] = 'application/json'
+        request['Authorization'] = "Bearer #{key}"
+        request.body = {
+          model: model,
+          messages: [{role: 'user', content: prompt}],
+          max_tokens: 200,
+          temperature: 0.7
+        }.to_json
+        
+        response = http.request(request)
+        if response.code == '200'
+          result = JSON.parse(response.body)
+          return result['choices'][0]['message']['content']
+        else
+          return "Error: #{response.code} - #{response.body}"
+        end
+      rescue => e
+        return "Error connecting to OpenAI: #{e.message}"
+      end
+    else
+      return "Unsupported model: #{model}. Currently only ollama and OpenAI models are supported."
+    end
+  end
+end
+
+def ai_command_suggest(prompt)
+  # Get AI model configuration
+  model = @aimodel || nil
+  key = @aikey || nil
+  
+  # Modify prompt to request command output
+  cmd_prompt = "You are a Linux/Unix command line expert. Given this request: '#{prompt}', output ONLY the exact shell command that would accomplish this task. Output just the command itself with no explanation, no backticks, no markdown. For example, if asked 'list files' you would output: ls"
+  
+  if model.nil? || model.empty?
+    # Try ollama first
+    if File.exist?("/usr/local/bin/ollama") || File.exist?("/usr/bin/ollama") || system("command -v ollama >/dev/null 2>&1")
+      begin
+        require 'json'
+        require 'net/http'
+        
+        # First, get available models
+        ollama_model = get_ollama_model()
+        unless ollama_model
+          puts ai_setup_help
+          return nil
+        end
+        
+        uri = URI('http://localhost:11434/api/generate')
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.read_timeout = 30
+        
+        request = Net::HTTP::Post.new(uri)
+        request['Content-Type'] = 'application/json'
+        request.body = {
+          model: ollama_model,
+          prompt: cmd_prompt,
+          stream: false,
+          options: {
+            num_predict: 50,
+            temperature: 0.3
+          }
+        }.to_json
+        
+        response = http.request(request)
+        if response.code == '200'
+          result = JSON.parse(response.body)
+          cmd = result['response'].strip.split("\n")[0]
+          return cmd
+        else
+          puts ai_setup_help
+          return nil
+        end
+      rescue => e
+        puts ai_setup_help
+        return nil
+      end
+    else
+      puts ai_setup_help
+      return nil
+    end
+  else
+    # Use external model
+    if model =~ /^gpt/i && key
+      begin
+        require 'json'
+        require 'net/http'
+        uri = URI('https://api.openai.com/v1/chat/completions')
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = true
+        http.read_timeout = 30
+        
+        request = Net::HTTP::Post.new(uri)
+        request['Content-Type'] = 'application/json'
+        request['Authorization'] = "Bearer #{key}"
+        request.body = {
+          model: model,
+          messages: [{role: 'user', content: cmd_prompt}],
+          max_tokens: 50,
+          temperature: 0.3
+        }.to_json
+        
+        response = http.request(request)
+        if response.code == '200'
+          result = JSON.parse(response.body)
+          cmd = result['choices'][0]['message']['content'].strip.split("\n")[0]
+          return cmd
+        else
+          puts "Error: #{response.code} - #{response.body}"
+          return nil
+        end
+      rescue => e
+        puts "Error connecting to OpenAI: #{e.message}"
+        return nil
+      end
+    else
+      puts "Unsupported model: #{model}. Currently only ollama and OpenAI models are supported."
+      return nil
+    end
+  end
+end
+
+def ai_setup_help
+  help_text = <<~HELP
+    
+    AI is not configured. To use AI features, you have two options:
+    
+    1. Install Ollama (recommended for local AI):
+       curl -fsSL https://ollama.com/install.sh | sh
+       ollama pull llama3.2  # or any model you prefer
+    
+    2. Configure external AI model in ~/.rshrc:
+       @aimodel = "gpt-4"
+       @aikey = "your-api-key-here"
+    
+    Once configured:
+    - Use @ for AI text responses: @ What is the GDP of Norway?
+    - Use @@ for AI command suggestions: @@ list files sorted by size
+  HELP
+  return help_text.c(@c_path)
+end
+
 # INITIAL SETUP
 begin # Load .rshrc and populate @history
   trap "SIGINT" do end
@@ -935,6 +1175,10 @@ loop do
       hi = @history[@cmd.sub(/^!(\d+)$/, '\1').to_i+1] 
       @cmd = hi if hi
     end
+    # Move cursor to end of line and print the full command before clearing
+    @c.row(@row0)
+    @c.clear_line
+    print @prompt + @cmd
     print "\n"; @c.clear_screen_down
     if @cmd == "r" # Integration with rtfm (https://github.com/isene/RTFM)
       t  = Time.now
@@ -950,6 +1194,23 @@ loop do
     if @cmd =~ /^\=/ # Integration with xrpn (https://github.com/isene/xrpn)
       @cmd.gsub!("  ", ",")
       @cmd = "echo \"#{@cmd[1...]},prx,off\" | xrpn" 
+    end
+    # AI integration with @ and @@
+    if @cmd =~ /^@@\s+(.+)/ # AI command suggestion
+      prompt = $1
+      response = ai_command_suggest(prompt)
+      if response
+        # Store the suggestion for the next prompt
+        @ai_suggestion = response
+        # Also add to history for record keeping
+        @history.unshift(response)
+      end
+      next
+    elsif @cmd =~ /^@\s+(.+)/ # AI text response
+      prompt = $1
+      response = ai_query(prompt)
+      puts response if response
+      next
     end
     if @cmd.match(/^\s*:/) # Ruby commands are prefixed with ":"
       begin
