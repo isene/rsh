@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.9.0" # Feature release: AI integration with @ and @@ commands
+@version    = "2.9.1" # Bug fix: Improved command coloring for local executables and after ENTER
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -555,20 +555,24 @@ def hist_clean # Clean up @history
 end
 def cmd_check(str) # Check if each element on the readline matches commands, nicks, paths; color them
   return if str.nil?
-  
+
   # Special handling for @ and @@ commands
   if str =~ /^(@@?)\s+(.*)$/
     prefix = $1
     rest = $2
     return prefix.c(4) + " " + rest  # Color @ or @@ in blue (4), rest uncolored
   end
-  
+
   str.gsub(/(?:\S'[^']*'|[^ '])+/) do |el|
+    clean_el = el.gsub("'", "")
     if @exe.include?(el)
       el.c(@c_cmd)
     elsif el == "cd"
       el.c(@c_cmd)
-    elsif File.exist?(el.gsub("'", ""))
+    elsif clean_el =~ /^\.\/(.+)/ && File.exist?(clean_el) && File.executable?(clean_el)
+      # Color local executables starting with ./
+      el.c(@c_cmd)
+    elsif File.exist?(clean_el)
       el.c(@c_path)
     elsif @nick.include?(el)
       el.c(@c_nick)
@@ -1178,7 +1182,7 @@ loop do
     # Move cursor to end of line and print the full command before clearing
     @c.row(@row0)
     @c.clear_line
-    print @prompt + @cmd
+    print @prompt + cmd_check(@cmd)
     print "\n"; @c.clear_screen_down
     if @cmd == "r" # Integration with rtfm (https://github.com/isene/RTFM)
       t  = Time.now
