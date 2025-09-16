@@ -32,15 +32,20 @@ module Cursor # Terminal cursor movement ANSI codes (thanks to https://github.co
   end
   def pos # Query cursor current position
     res = ''
-    $stdin.raw do |stdin|
-      $stdout << CSI + '6n' # Tha actual ANSI get-position
-      $stdout.flush
-      while (c = stdin.getc) != 'R'
-        res << c if c
+    begin
+      $stdin.raw do |stdin|
+        $stdout << CSI + '6n' # Tha actual ANSI get-position
+        $stdout.flush
+        while (c = stdin.getc) != 'R'
+          res << c if c
       end
+      end
+    rescue Errno::ENOTTY
+      # Not a TTY, return default values
+      return 25, 80
     end
     m = res.match /(?<row>\d+);(?<col>\d+)/
-    return m[:row].to_i, m[:col].to_i
+    return m ? [m[:row].to_i, m[:col].to_i] : [25, 80]
   end
   def rowget
     row, col = self.pos
@@ -596,12 +601,19 @@ def rshrc # Write updates to .rshrc
   else
     conf = ""
   end
-  conf.sub!(/^@nick.*\n/, "") 
+  conf.sub!(/^@nick.*\n/, "")
   conf += "@nick = #{@nick}\n"
-  conf.sub!(/^@gnick.*\n/, "") 
+  conf.sub!(/^@gnick.*\n/, "")
   conf += "@gnick = #{@gnick}\n"
-  conf.sub!(/^@history.*\n/, "") 
-  conf += "@history = #{@history.last(@histsize)}\n"
+  conf.sub!(/^@history.*\n/, "")
+  # Ensure history is properly formatted as valid Ruby array
+  begin
+    history_str = @history.last(@histsize).inspect
+    conf += "@history = #{history_str}\n"
+  rescue => e
+    conf += "@history = []\n"
+    puts "Warning: Error saving history: #{e.message}"
+  end
   File.write(Dir.home+'/.rshrc', conf)
   puts "\n.rshrc updated"
 end
@@ -1104,18 +1116,140 @@ def ai_setup_help
 end
 
 # INITIAL SETUP
+def load_rshrc_safe
+  return unless File.exist?(Dir.home+'/.rshrc')
+
+  begin
+    # Try to load the .rshrc file
+    load(Dir.home+'/.rshrc')
+
+    # Validate critical variables
+    @history = [] unless @history.is_a?(Array)
+    @nick = {} unless @nick.is_a?(Hash)
+    @gnick = {} unless @gnick.is_a?(Hash)
+
+  rescue SyntaxError => e
+    puts "\n\033[31mERROR: Syntax error in .rshrc:\033[0m"
+    puts e.message
+    puts "\n\033[33mAttempting to auto-heal .rshrc...\033[0m\n"
+
+    if auto_heal_rshrc
+      puts "\033[32m.rshrc has been healed! Retrying...\033[0m\n"
+      begin
+        load(Dir.home+'/.rshrc')
+      rescue => e2
+        puts "\033[31mAuto-heal failed. Loading with defaults.\033[0m"
+        load_defaults
+      end
+    else
+      puts "\033[31mAuto-heal failed. Loading with defaults.\033[0m"
+      load_defaults
+    end
+
+  rescue => e
+    puts "\n\033[31mERROR loading .rshrc: #{e.message}\033[0m"
+    puts "\033[33mLoading with defaults...\033[0m\n"
+    load_defaults
+  end
+end
+
+def auto_heal_rshrc
+  begin
+    rshrc_path = Dir.home + '/.rshrc'
+    return false unless File.exist?(rshrc_path)
+
+    # Backup the corrupted file
+    backup_path = rshrc_path + '.backup.' + Time.now.strftime('%Y%m%d_%H%M%S')
+    File.write(backup_path, File.read(rshrc_path))
+    puts "Backed up corrupted .rshrc to #{backup_path}"
+
+    content = File.read(rshrc_path)
+    original_content = content.dup
+    healed = false
+
+    # Fix common history array issues
+    if content =~ /^@history\s*=\s*\[.*\]\s*\n\s*,/m
+      # Fix case where array ends with ] followed by comma on next line
+      content.gsub!(/^(@history\s*=\s*\[.*\])\s*\n\s*,(.*)$/m) do |match|
+        # Remove the extra closing bracket and merge the lines
+        history_line = $1
+        continuation = $2
+        # Remove trailing ] from first part
+        history_line = history_line.sub(/\]\s*$/, '')
+        # Combine and close properly
+        "#{history_line}, #{continuation}]"
+      end
+      healed = true
+    end
+
+    # Fix unclosed arrays
+    ['@history', '@nick', '@gnick'].each do |var|
+      if content =~ /^#{var}\s*=\s*[[{](?!.*[}\]]\s*$)/m
+        content.sub!(/^(#{var}\s*=\s*)(\[.*?)$/m) { "#{$1}#{$2}]" }
+        content.sub!(/^(#{var}\s*=\s*)({.*?)$/m) { "#{$1}#{$2}}" }
+        healed = true
+      end
+    end
+
+    # Validate Ruby syntax of the healed content
+    begin
+      # Try to parse the content
+      eval("BEGIN {return true}\n" + content)
+    rescue SyntaxError => e
+      # If still has syntax errors, extract only valid parts
+      new_content = ""
+
+      # Extract valid variable assignments
+      content.each_line do |line|
+        if line =~ /^(@\w+|\w+)\s*=\s*.+$/
+          begin
+            eval(line)
+            new_content += line
+          rescue
+            # Skip invalid lines
+          end
+        elsif line =~ /^(def|class|module|end|if|else|elsif|when|case|begin|rescue)/
+          new_content += line
+        elsif line.strip.start_with?('#') || line.strip.empty?
+          new_content += line
+        end
+      end
+
+      content = new_content
+      healed = true
+    end
+
+    if healed && content != original_content
+      File.write(rshrc_path, content)
+      return true
+    end
+
+    false
+  rescue => e
+    puts "Error during auto-heal: #{e.message}"
+    false
+  end
+end
+
+def load_defaults
+  @history ||= []
+  @nick ||= {"ls" => "ls --color -F"}
+  @gnick ||= {}
+  puts "Loaded with default configuration."
+end
+
 begin # Load .rshrc and populate @history
   trap "SIGINT" do end
-  trap "SIGHUP" do 
+  trap "SIGHUP" do
     rshrc
     exit
   end
-  trap "SIGTERM" do 
+  trap "SIGTERM" do
     rshrc
     exit
   end
   firstrun unless File.exist?(Dir.home+'/.rshrc') # Initial loading - to get history
-  load(Dir.home+'/.rshrc')
+  load_rshrc_safe
   # Load login shell files if rsh is running as login shell
   if ENV['LOGIN_SHELL'] or $0 == "-rsh" or ARGV.include?('-l') or ARGV.include?('--login')
     ['/etc/profile', Dir.home+'/.profile', Dir.home+'/.bash_profile', Dir.home+'/.bashrc'].each do |f|
@@ -1159,7 +1293,7 @@ loop do
   begin
     @user = Etc.getpwuid(Process.euid).name # For use in @prompt
     @node = Etc.uname[:nodename]            # For use in @prompt
-    h = @history; load(Dir.home+'/.rshrc') if File.exist?(Dir.home+'/.rshrc'); @history = h # reload prompt but not history
+    h = @history; load_rshrc_safe; @history = h # reload prompt but not history safely
     @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
     system("printf \"\033]0;rsh: #{Dir.pwd}\007\"")   # Set Window title to path 
     @history[0] = "" unless @history[0]
