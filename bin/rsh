@@ -439,15 +439,16 @@ def tab(type)
   @postab   = @history[0][@pos..].to_s          # Extract the current line from cursor to end
   @c_row, @c_col = @c.pos                       # Get cursor position
   @row0     = @c_row                            # Save original row
-  @tabstr   = @pretab.split(/[|;&, ]/).last.to_s  # Get the sustring that is being tab completed
-  # Special handling for environment variables
+  # Special handling for environment variables first
   if @pretab =~ /\$\w*$/
     @tabstr = @pretab.match(/\$\w*$/)[0]
     @pretab = @pretab.sub(/\$\w*$/, '')
+  else
+    @tabstr   = @pretab.split(/[|;&, ]/).last.to_s  # Get the sustring that is being tab completed
+    @tabstr   = "" if @pretab[-1] =~ /[ |;&]/       # Tab from nothing if tabbing starts with space, pipe, etc.
+    @tabstr   = @pretab if type == "hist"         # Searching for matches with whole string in history
+    @pretab   = @pretab.delete_suffix(@tabstr)
   end
-  @tabstr   = "" if @pretab[-1] =~ /[ |;&]/       # Tab from nothing if tabbing starts with space, pipe, etc.
-  @tabstr   = @pretab if type == "hist"         # Searching for matches with whole string in history
-  @pretab   = @pretab.delete_suffix(@tabstr)
   type = "switch" if @tabstr && @tabstr[0] == "-"
   type = "env_vars" if @tabstr && @tabstr[0] == "$"
 
@@ -519,16 +520,21 @@ def tab(type)
       # Enhanced matching with case sensitivity and fuzzy support
       regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
 
-      # Try fuzzy matching first, then fall back to regular matching
-      if @completion_fuzzy && @tabstr.length > 1
-        # Fuzzy matching: insert .* between characters
-        fuzzy_pattern = @tabstr.chars.join('.*')
+      # Try multiple matching strategies
+      compl = []
+
+      # First try exact prefix matching
+      compl = ex.select { |s| s =~ Regexp.new("^#{@tabstr}", regex_flags) }
+
+      # If no results and fuzzy enabled, try fuzzy matching
+      if compl.empty? && @completion_fuzzy && @tabstr.length > 1
+        # Fuzzy matching: match from start with characters in order
+        fuzzy_pattern = "^#{@tabstr.chars.join('.*')}"
         compl = ex.select { |s| s =~ Regexp.new(fuzzy_pattern, regex_flags) }
-        # If fuzzy matching returns no results, fall back to regular matching
-        if compl.empty?
-          compl = ex.select { |s| s =~ Regexp.new(@tabstr, regex_flags) }
-        end
-      else
+      end
+
+      # If still no results, try substring matching
+      if compl.empty?
         compl = ex.select { |s| s =~ Regexp.new(@tabstr, regex_flags) }
       end
 
