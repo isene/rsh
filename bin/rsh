@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.10.1" # Bug fix: Improved && operator logic for proper conditional execution
+@version    = "2.11.0" # Enhanced TAB completion with smart context-aware completion, frequency scoring, fuzzy matching, and more
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -102,6 +102,9 @@ begin # Initialization
   @gnick       = {}                       # Initiate generic/global alias/nick hash
   @history     = []                       # Initiate history array
   @exe = []
+  @exe_cache_time = 0                     # Cache timestamp for executables
+  @exe_cache_paths = ""                   # Cached PATH value
+  @cmd_frequency = {}                     # Track command usage frequency
   # Paths
   @user = Etc.getpwuid(Process.euid).name # For use in @prompt
   @path        = ENV["PATH"].split(":")   # Get paths
@@ -179,6 +182,12 @@ def firstrun
   @c_tabselect = 207  # Color for selected tabcompleted item
   @c_taboption = 244  # Color for unselected tabcompleted item
   @c_stamp     = 244  # Color for time stamp/command
+
+  # TAB COMPLETION SETTINGS
+  @completion_limit = 10              # Max completion items to show
+  @completion_case_sensitive = false  # Case-insensitive completion
+  @completion_show_descriptions = false # Show help text inline
+  @completion_fuzzy = true            # Enable fuzzy matching
 
   @nick = {"ls"=>"ls --color -F"}
 RSHRC
@@ -430,11 +439,31 @@ def tab(type)
   @postab   = @history[0][@pos..].to_s          # Extract the current line from cursor to end
   @c_row, @c_col = @c.pos                       # Get cursor position
   @row0     = @c_row                            # Save original row
-  @tabstr   = @pretab.split(/[|, ]/).last.to_s  # Get the sustring that is being tab completed
-  @tabstr   = "" if @pretab[-1] =~ /[ |]/       # Tab from nothing if tabbing starts with space or pipe
+  @tabstr   = @pretab.split(/[|;&, ]/).last.to_s  # Get the sustring that is being tab completed
+  @tabstr   = "" if @pretab[-1] =~ /[ |;&]/       # Tab from nothing if tabbing starts with space, pipe, etc.
   @tabstr   = @pretab if type == "hist"         # Searching for matches with whole string in history
   @pretab   = @pretab.delete_suffix(@tabstr)
   type = "switch" if @tabstr[0] == "-"
+
+  # Smart context-aware completion
+  unless type == "switch" || type == "hist"
+    cmd_parts = @pretab.strip.split(/[|;&]/).last.strip.split
+    last_cmd = cmd_parts.first if cmd_parts.any?
+
+    case last_cmd
+    when "cd", "pushd", "rmdir"
+      type = "dirs_only"
+    when "vim", "nano", "cat", "less", "more", "head", "tail", "file"
+      type = "files_only"
+    when "git"
+      type = "git_subcommands" if cmd_parts.length == 1
+    when "man", "info", "which", "whatis"
+      type = "commands_only"
+    when "export", "unset"
+      type = "env_vars"
+    end
+  end
+
   while chr != "ENTER"
     case type
     when "hist"         # Handle history completions ('UP' key)
@@ -448,26 +477,80 @@ def tab(type)
       hlp = hlp.map{|h| h.sub(/^\s*/, '').sub(/^--/, '    --')}
       hlp = hlp.reject{|h| /-</ =~ h}
       @tabarray = hlp
+    when "dirs_only"    # Only show directories
+      fdir = @tabstr + "*"
+      dirs = Dir.glob(fdir).select { |d| Dir.exist?(d) }.map { |d| d + "/" }
+      @tabarray = dirs
+    when "files_only"   # Only show files, not directories
+      fdir = @tabstr + "*"
+      files = Dir.glob(fdir).reject { |f| Dir.exist?(f) }
+      @tabarray = files
+    when "commands_only" # Only show executable commands
+      ex = @exe.dup
+      ex.prepend(*@nick.keys, *@gnick.keys)
+      regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
+      @tabarray = ex.select { |s| s =~ Regexp.new(@tabstr, regex_flags) }
+    when "git_subcommands" # Git subcommands
+      git_cmds = %w[add branch checkout clone commit diff fetch init log merge pull push rebase reset status tag]
+      regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
+      @tabarray = git_cmds.select { |cmd| cmd =~ Regexp.new(@tabstr, regex_flags) }
+    when "env_vars"     # Environment variables
+      env_vars = ENV.keys.map { |k| "$#{k}" }
+      regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
+      @tabarray = env_vars.select { |var| var =~ Regexp.new(@tabstr, regex_flags) }
     when "all"          # Handle all other tab completions
       ex  = []
       ex += @exe
       ex.sort!
       ex.prepend(*@nick.keys)        # Add nicks
       ex.prepend(*@gnick.keys)       # Add gnicks
-      compl      = ex.select {|s| s =~ Regexp.new(@tabstr)} # Select only that which matches so far
-      fdir       = @tabstr + "*"
-      compl.prepend(*Dir.glob(fdir)).map! do |e| 
-        if e =~ /(?<!\\) / 
-          e = e.sub(/(.*\/|^)(.*)/, '\1\'\2\'') unless  e =~ /'/
+
+      # Enhanced matching with case sensitivity and fuzzy support
+      regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
+
+      if @completion_fuzzy && @tabstr.length > 1
+        # Fuzzy matching: insert .* between characters
+        fuzzy_pattern = @tabstr.chars.join('.*')
+        compl = ex.select { |s| s =~ Regexp.new(fuzzy_pattern, regex_flags) }
+      else
+        compl = ex.select { |s| s =~ Regexp.new(@tabstr, regex_flags) }
+      end
+
+      # Sort by frequency (most used first), then alphabetically
+      compl.sort! do |a, b|
+        freq_a = @cmd_frequency[a] || 0
+        freq_b = @cmd_frequency[b] || 0
+        if freq_a == freq_b
+          a <=> b
+        else
+          freq_b <=> freq_a
+        end
+      end
+
+      # File completion with hidden file handling
+      fdir = @tabstr + "*"
+      files = Dir.glob(fdir)
+
+      # Only show hidden files if tabstr starts with .
+      unless @tabstr.start_with?('.')
+        files.reject! { |f| File.basename(f).start_with?('.') }
+      end
+
+      files.map! do |e|
+        if e =~ /(?<!\\) /
+          e = e.sub(/(.*\/|^)(.*)/, '\1\'\2\'') unless e =~ /'/
         end
         Dir.exist?(e) ? e + "/" : e   # Add matching dirs
       end
+
+      compl.prepend(*files)
       @tabarray = compl               # Finally put it into @tabarray
     end
     return if @tabarray.empty?
     @tabarray.delete("")                                      # Don't remember why
     @c.clear_screen_down                                      # Here we go
-    @tabarray.length.to_i - i < 5 ? l = @tabarray.length.to_i - i : l = 5 # Max 5 rows of completion items
+    max_items = @completion_limit || 5
+    @tabarray.length.to_i - i < max_items ? l = @tabarray.length.to_i - i : l = max_items
     l.times do |x|                                            # Iterate through
       if x == 0                                               # First item goes onto the commandline
         @c.clear_line                                         # Clear the line
@@ -494,7 +577,9 @@ def tab(type)
           tabline1 = tabline.sub(/(.*?)#{@tabstr}.*/, '\1').c(@c_taboption) # Color before @tabstr
           tabline2 = tabline.sub(/.*?#{@tabstr}(.*)/, '\1').c(@c_taboption) # Color after @tabstr
           print " " + tabline1 + @tabstr.c(@c_taboption).u + tabline2       # Print the whole line
-        rescue
+        rescue => e
+          # Log completion errors if debugging enabled
+          File.write("/tmp/rsh_completion.log", "#{Time.now}: Completion error - #{e}\n", mode: 'a') if ENV['RSH_DEBUG']
         end
       end
       nextline      # To not run off screen
@@ -605,6 +690,8 @@ def rshrc # Write updates to .rshrc
   conf += "@nick = #{@nick}\n"
   conf.sub!(/^@gnick.*\n/, "")
   conf += "@gnick = #{@gnick}\n"
+  conf.sub!(/^@cmd_frequency.*\n/, "")
+  conf += "@cmd_frequency = #{@cmd_frequency}\n"
   conf.sub!(/^@history.*\n/, "")
   # Ensure history is properly formatted as valid Ruby array
   begin
@@ -1139,6 +1226,7 @@ def load_rshrc_safe
     @history = [] unless @history.is_a?(Array)
     @nick = {} unless @nick.is_a?(Hash)
     @gnick = {} unless @gnick.is_a?(Hash)
+    @cmd_frequency = {} unless @cmd_frequency.is_a?(Hash)
 
   rescue SyntaxError => e
     puts "\n\033[31mERROR: Syntax error in .rshrc:\033[0m"
@@ -1195,7 +1283,7 @@ def auto_heal_rshrc
     end
 
     # Fix unclosed arrays
-    ['@history', '@nick', '@gnick'].each do |var|
+    ['@history', '@nick', '@gnick', '@cmd_frequency'].each do |var|
       if content =~ /^#{var}\s*=\s*[[{](?!.*[}\]]\s*$)/m
         content.sub!(/^(#{var}\s*=\s*)(\[.*?)$/m) { "#{$1}#{$2}]" }
         content.sub!(/^(#{var}\s*=\s*)({.*?)$/m) { "#{$1}#{$2}}" }
@@ -1247,7 +1335,34 @@ def load_defaults
   @history ||= []
   @nick ||= {"ls" => "ls --color -F"}
   @gnick ||= {}
+  @completion_limit ||= 10
+  @completion_case_sensitive ||= false
+  @completion_show_descriptions ||= false
+  @completion_fuzzy ||= true
+  @cmd_frequency ||= {}
   puts "Loaded with default configuration."
+end
+
+def cache_executables
+  current_path = ENV["PATH"]
+  current_time = Time.now.to_i
+
+  # Only rebuild cache if PATH changed or cache is older than 60 seconds
+  return if @exe_cache_paths == current_path && (current_time - @exe_cache_time) < 60
+
+  @exe = []
+  @path = current_path.split(":")
+  @path.map! {|p| p + "/*"}
+
+  @path.each do |p|
+    Dir.glob(p).each do |c|
+      @exe.append(File.basename(c)) if File.executable?(c) and not Dir.exist?(c)
+    end
+  end
+
+  @exe.uniq!
+  @exe_cache_time = current_time
+  @exe_cache_paths = current_path
 end
 
 begin # Load .rshrc and populate @history
@@ -1309,12 +1424,7 @@ loop do
     @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
     system("printf \"\033]0;rsh: #{Dir.pwd}\007\"")   # Set Window title to path 
     @history[0] = "" unless @history[0]
-    @exe = []
-    @path.each do |p| # Add all executables in @path
-      Dir.glob(p).each do |c|
-        @exe.append(File.basename(c)) if File.executable?(c) and not Dir.exist?(c)
-      end
-    end
+    cache_executables  # Use cached executable lookup
     getstr # Main work is here
     @cmd = @history[0]
     @dirs.unshift(Dir.pwd)
@@ -1434,6 +1544,11 @@ loop do
           else 
             begin
               pre_cmd
+
+              # Track command frequency for intelligent completion
+              cmd_base = @cmd.split.first
+              @cmd_frequency[cmd_base] = (@cmd_frequency[cmd_base] || 0) + 1
+
               # Handle background jobs
               if @cmd.end_with?(' &')
                 @cmd = @cmd[0..-3]  # Remove the &
