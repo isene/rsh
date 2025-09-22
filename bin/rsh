@@ -440,10 +440,16 @@ def tab(type)
   @c_row, @c_col = @c.pos                       # Get cursor position
   @row0     = @c_row                            # Save original row
   @tabstr   = @pretab.split(/[|;&, ]/).last.to_s  # Get the sustring that is being tab completed
+  # Special handling for environment variables
+  if @pretab =~ /\$\w*$/
+    @tabstr = @pretab.match(/\$\w*$/)[0]
+    @pretab = @pretab.sub(/\$\w*$/, '')
+  end
   @tabstr   = "" if @pretab[-1] =~ /[ |;&]/       # Tab from nothing if tabbing starts with space, pipe, etc.
   @tabstr   = @pretab if type == "hist"         # Searching for matches with whole string in history
   @pretab   = @pretab.delete_suffix(@tabstr)
   type = "switch" if @tabstr && @tabstr[0] == "-"
+  type = "env_vars" if @tabstr && @tabstr[0] == "$"
 
   # Smart context-aware completion
   unless type == "switch" || type == "hist"
@@ -513,10 +519,15 @@ def tab(type)
       # Enhanced matching with case sensitivity and fuzzy support
       regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
 
+      # Try fuzzy matching first, then fall back to regular matching
       if @completion_fuzzy && @tabstr.length > 1
         # Fuzzy matching: insert .* between characters
         fuzzy_pattern = @tabstr.chars.join('.*')
         compl = ex.select { |s| s =~ Regexp.new(fuzzy_pattern, regex_flags) }
+        # If fuzzy matching returns no results, fall back to regular matching
+        if compl.empty?
+          compl = ex.select { |s| s =~ Regexp.new(@tabstr, regex_flags) }
+        end
       else
         compl = ex.select { |s| s =~ Regexp.new(@tabstr, regex_flags) }
       end
@@ -548,8 +559,12 @@ def tab(type)
         Dir.exist?(e) ? e + "/" : e   # Add matching dirs
       end
 
-      compl.prepend(*files)
-      @tabarray = compl               # Finally put it into @tabarray
+      # Separate directories and files for better ordering
+      dirs = files.select { |f| f.end_with?('/') }
+      files_only = files.reject { |f| f.end_with?('/') }
+
+      # Order: directories first, then files, then commands
+      @tabarray = dirs + files_only + compl
     end
     return if @tabarray.empty?
     @tabarray.delete("")                                      # Don't remember why
