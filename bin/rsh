@@ -443,12 +443,17 @@ def tab(type)
   @tabstr   = "" if @pretab[-1] =~ /[ |;&]/       # Tab from nothing if tabbing starts with space, pipe, etc.
   @tabstr   = @pretab if type == "hist"         # Searching for matches with whole string in history
   @pretab   = @pretab.delete_suffix(@tabstr)
-  type = "switch" if @tabstr[0] == "-"
+  type = "switch" if @tabstr && @tabstr[0] == "-"
 
   # Smart context-aware completion
   unless type == "switch" || type == "hist"
-    cmd_parts = @pretab.strip.split(/[|;&]/).last.strip.split
-    last_cmd = cmd_parts.first if cmd_parts.any?
+    if @pretab && !@pretab.empty?
+      cmd_parts = @pretab.strip.split(/[|;&]/).last.strip.split
+      last_cmd = cmd_parts.first if cmd_parts.any?
+    else
+      cmd_parts = []
+      last_cmd = nil
+    end
 
     case last_cmd
     when "cd", "pushd", "rmdir"
@@ -1546,8 +1551,10 @@ loop do
               pre_cmd
 
               # Track command frequency for intelligent completion
-              cmd_base = @cmd.split.first
-              @cmd_frequency[cmd_base] = (@cmd_frequency[cmd_base] || 0) + 1
+              if @cmd && !@cmd.empty?
+                cmd_base = @cmd.split.first
+                @cmd_frequency[cmd_base] = (@cmd_frequency[cmd_base] || 0) + 1 if cmd_base
+              end
 
               # Handle background jobs
               if @cmd.end_with?(' &')
