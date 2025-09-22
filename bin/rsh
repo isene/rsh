@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.9.1" # Bug fix: Improved command coloring for local executables and after ENTER
+@version    = "2.10.1" # Bug fix: Improved && operator logic for proper conditional execution
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -865,27 +865,39 @@ end
 def execute_conditional(cmd_line)
   # Split on && and || while preserving the operators
   parts = cmd_line.split(/(\s*&&\s*|\s*\|\|\s*)/)
-  
-  result = true
+
+  result = nil  # Start with nil to handle first command
   i = 0
+
   while i < parts.length
-    command = parts[i].strip
-    next if command.empty?
-    
-    if command == '&&'
-      i += 1
-      next unless result  # Skip if previous command failed
-    elsif command == '||'
-      i += 1
-      next if result      # Skip if previous command succeeded
+    part = parts[i].strip
+    i += 1
+    next if part.empty?
+
+    if part == '&&'
+      # If previous command failed, skip the rest until we find || or end
+      unless result
+        while i < parts.length && parts[i].strip != '||'
+          i += 1
+        end
+      end
+    elsif part == '||'
+      # If previous command succeeded, skip the rest until we find && or end
+      if result
+        while i < parts.length && parts[i].strip != '&&'
+          i += 1
+        end
+      end
     else
       # Execute the command
-      success = system(command)
+      success = system(part)
       result = success
-      puts " Command failed: #{command} (exit #{$?.exitstatus})" unless success
+      @last_exit = $?.exitstatus
+      puts " Command failed: #{part} (exit #{@last_exit})" unless success
     end
-    i += 1
   end
+
+  result
 end
 def expand_braces(str)
   # Simple brace expansion: {a,b,c} -> a b c
