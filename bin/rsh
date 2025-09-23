@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.11.0" # Enhanced TAB completion with smart context-aware completion, frequency scoring, fuzzy matching, and more
+@version    = "2.11.0-debug" # Enhanced TAB completion with smart context-aware completion, frequency scoring, fuzzy matching, and more
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -288,6 +288,7 @@ def getstr # A custom Readline-like function
       @c.col(c_col.modulo(@maxcol))
     end
     chr = getchr
+    puts "DEBUG: Got char: '#{chr}' (length: #{chr.length})" if ENV['RSH_DEBUG']
     case chr
     when 'C-G', 'C-C'
       @history[0] = "" 
@@ -410,6 +411,10 @@ def getstr # A custom Readline-like function
       @pos = 0
       lift = true
     when 'TAB'   # Tab completion of dirs and files
+      puts "\n=== TAB KEY DETECTED ===" if ENV['RSH_DEBUG']
+      puts "Current line: '#{@history[0]}'" if ENV['RSH_DEBUG']
+      puts "Cursor pos: #{@pos}" if ENV['RSH_DEBUG']
+      puts "======================" if ENV['RSH_DEBUG']
       @ci = nil
       #@tabsearch =~ /^-/ ? tabbing("switch") : tabbing("all")
       tab("all")
@@ -435,6 +440,7 @@ def tab(type)
   i = 0
   chr = ""
   @tabarray = []
+
   @pretab   = @history[0][0...@pos].to_s        # Extract the current line up to cursor
   @postab   = @history[0][@pos..].to_s          # Extract the current line from cursor to end
   @c_row, @c_col = @c.pos                       # Get cursor position
@@ -451,6 +457,17 @@ def tab(type)
   end
   type = "switch" if @tabstr && @tabstr[0] == "-"
   type = "env_vars" if @tabstr && @tabstr[0] == "$"
+
+  # Debug output when RSH_DEBUG is set
+  if ENV['RSH_DEBUG']
+    puts "\n=== TAB DEBUG ==="
+    puts "Input type: #{type}"
+    puts "@pretab: '#{@pretab}'"
+    puts "@tabstr: '#{@tabstr}'"
+    puts "Length: #{@tabstr.length}"
+    puts "First char: '#{@tabstr[0] if @tabstr}'"
+    puts "=================="
+  end
 
   # Smart context-aware completion
   unless type == "switch" || type == "hist"
@@ -571,6 +588,15 @@ def tab(type)
 
       # Order: directories first, then files, then commands
       @tabarray = dirs + files_only + compl
+
+      # Debug completion results
+      if ENV['RSH_DEBUG']
+        puts "=== COMPLETION RESULTS ==="
+        puts "Type: #{type}"
+        puts "Total matches: #{@tabarray.length}"
+        puts "First 5: #{@tabarray.first(5)}"
+        puts "=========================="
+      end
     end
     return if @tabarray.empty?
     @tabarray.delete("")                                      # Don't remember why
@@ -1310,7 +1336,7 @@ def auto_heal_rshrc
 
     # Fix unclosed arrays
     ['@history', '@nick', '@gnick', '@cmd_frequency'].each do |var|
-      if content =~ /^#{var}\s*=\s*[[{](?!.*[}\]]\s*$)/m
+      if content =~ /^#{var}\s*=\s*[\[{](?!.*[}\]]\s*$)/m
         content.sub!(/^(#{var}\s*=\s*)(\[.*?)$/m) { "#{$1}#{$2}]" }
         content.sub!(/^(#{var}\s*=\s*)({.*?)$/m) { "#{$1}#{$2}}" }
         healed = true
