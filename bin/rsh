@@ -594,7 +594,7 @@ def tab(type)
         puts "=== COMPLETION RESULTS ==="
         puts "Type: #{type}"
         puts "Total matches: #{@tabarray.length}"
-        puts "First 5: #{@tabarray.first(5)}"
+        puts "First 5: #{@tabarray.first(5).inspect}"
         puts "=========================="
       end
     end
@@ -620,15 +620,25 @@ def tab(type)
         nextline                                              # Then start showing the completion items
         tabline  = @tabarray[i]                               # Get the next matching tabline
         # Can't nest ANSI codes, they must each complete/conclude or they will mess eachother up
-        tabline1 = tabline.sub(/(.*?)#{@tabstr}.*/, '\1').c(@c_tabselect) # Color the part before the @tabstr
-        tabline2 = tabline.sub(/.*?#{@tabstr}(.*)/, '\1').c(@c_tabselect) # Color the part after the @tabstr
-        print " " + tabline1 + @tabstr.c(@c_tabselect).u + tabline2       # Color & underline @tabstr
+        if tabline.include?(@tabstr)
+          tabline1 = tabline.sub(/(.*?)#{@tabstr}.*/, '\1').c(@c_tabselect) # Color the part before the @tabstr
+          tabline2 = tabline.sub(/.*?#{@tabstr}(.*)/, '\1').c(@c_tabselect) # Color the part after the @tabstr
+          print " " + tabline1 + @tabstr.c(@c_tabselect).u + tabline2       # Color & underline @tabstr
+        else
+          # For fuzzy matches, just show the whole word highlighted
+          print " " + tabline.c(@c_tabselect)
+        end
       else
         begin
           tabline = @tabarray[i+x]    # Next tabline, and next, etc (usually 4 times here)
-          tabline1 = tabline.sub(/(.*?)#{@tabstr}.*/, '\1').c(@c_taboption) # Color before @tabstr
-          tabline2 = tabline.sub(/.*?#{@tabstr}(.*)/, '\1').c(@c_taboption) # Color after @tabstr
-          print " " + tabline1 + @tabstr.c(@c_taboption).u + tabline2       # Print the whole line
+          if tabline.include?(@tabstr)
+            tabline1 = tabline.sub(/(.*?)#{@tabstr}.*/, '\1').c(@c_taboption) # Color before @tabstr
+            tabline2 = tabline.sub(/.*?#{@tabstr}(.*)/, '\1').c(@c_taboption) # Color after @tabstr
+            print " " + tabline1 + @tabstr.c(@c_taboption).u + tabline2       # Print the whole line
+          else
+            # For fuzzy matches, just show the whole word
+            print " " + tabline.c(@c_taboption)
+          end
         rescue => e
           # Log completion errors if debugging enabled
           File.write("/tmp/rsh_completion.log", "#{Time.now}: Completion error - #{e}\n", mode: 'a') if ENV['RSH_DEBUG']
