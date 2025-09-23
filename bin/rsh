@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.11.0-debug" # Enhanced TAB completion with smart context-aware completion, frequency scoring, fuzzy matching, and more
+@version    = "2.11.0" # Enhanced TAB completion with smart context-aware completion, frequency scoring, fuzzy matching, and more
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)

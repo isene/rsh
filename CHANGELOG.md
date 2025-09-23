@@ -1,5 +1,54 @@
 # rsh Changelog
 
+## v2.11.0 - Major TAB Completion Overhaul (2025-01-23)
+
+### 🎯 **SMART CONTEXT-AWARE COMPLETION**
+- **Intelligent command context detection**: `cd`, `pushd`, `rmdir` show only directories
+- **File-specific commands**: `vim`, `nano`, `cat`, `less` show only files
+- **Git integration**: `git <TAB>` shows git subcommands (add, commit, push, etc.)
+- **Command help**: `man`, `which`, `whatis` show only executable commands
+- **Environment variables**: `export`, `unset` show `$VAR` completions
+
+### 🚀 **PERFORMANCE & INTELLIGENCE**
+- **Executable caching**: 60-second cache dramatically improves TAB speed
+- **Frequency-based scoring**: Most-used commands appear first in completions
+- **Fuzzy matching with fallback**: `gti<TAB>` → `git`, `chmd<TAB>` → `chmod`
+- **Smart matching hierarchy**: Exact prefix → Fuzzy → Substring matching
+
+### ⚙️ **ENHANCED FILE COMPLETION**
+- **Hidden file handling**: Dotfiles only shown when starting with `.`
+- **Improved ordering**: Directories first, then files, then commands
+- **Environment variable completion**: `echo $P<TAB>` shows `$PATH`, `$PWD`, etc.
+- **Multi-delimiter support**: Better handling of pipes, semicolons, background commands
+
+### 🎨 **CONFIGURATION & CUSTOMIZATION**
+- **Configurable completion options**:
+  - `@completion_limit = 10` (max items shown)
+  - `@completion_case_sensitive = false`
+  - `@completion_fuzzy = true`
+  - `@completion_show_descriptions = false`
+- **Command frequency persistence**: Usage patterns saved across sessions
+- **Better error handling**: Optional debug logging with `RSH_DEBUG=1`
+
+### 🔧 **FIXES & IMPROVEMENTS**
+- **Auto-heal regex fix**: Corrected malformed character class in .rshrc healing
+- **Display formatting**: Fixed fuzzy match display showing duplicated text
+- **Null safety**: Added comprehensive null checks for edge cases
+- **Debug capabilities**: Enhanced debugging output for troubleshooting
+
+### 💡 **USAGE EXAMPLES**
+```bash
+cd <TAB>          # Shows only directories
+vim <TAB>         # Shows only files
+git <TAB>         # Shows: add, branch, checkout, clone, commit...
+echo $P<TAB>      # Shows: $PATH, $PWD, $PS1...
+gti<TAB>          # Fuzzy matches to 'git'
+```
+
+This release represents the most significant improvement to daily shell usage in rsh history!
+
+---
+
 ## v2.7.0 - Major Release: Ruby Functions & Advanced Shell Features (2025-01-01)
 
 ### 🎉 NEW: Ruby Functions - The Star Feature
