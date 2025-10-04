@@ -1,5 +1,13 @@
 # rsh Changelog
 
+## v2.11.1 - Critical Nick Persistence Bugfix (2025-10-04)
+
+### 🐛 **BUGFIX**
+- **Fixed nick persistence issue**: Nicks are now correctly saved to .rshrc even when the file doesn't end with a newline
+- **Root cause**: The regex pattern `/^@nick.*\n/` only matched lines ending with newline, causing `sub!` to return nil and duplicate @nick lines to accumulate
+- **Solution**: Updated regex to `/^@nick.*(\n|$)/` to match lines with or without trailing newline
+- **Impact**: Applies to @nick, @gnick, @cmd_frequency, and @history persistence
+
 ## v2.11.0 - Major TAB Completion Overhaul (2025-01-23)
 
 ### 🎯 **SMART CONTEXT-AWARE COMPLETION**

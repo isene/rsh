@@ -748,13 +748,13 @@ def rshrc # Write updates to .rshrc
   else
     conf = ""
   end
-  conf.sub!(/^@nick.*\n/, "")
+  conf.sub!(/^@nick.*(\n|$)/, "")
   conf += "@nick = #{@nick}\n"
-  conf.sub!(/^@gnick.*\n/, "")
+  conf.sub!(/^@gnick.*(\n|$)/, "")
   conf += "@gnick = #{@gnick}\n"
-  conf.sub!(/^@cmd_frequency.*\n/, "")
+  conf.sub!(/^@cmd_frequency.*(\n|$)/, "")
   conf += "@cmd_frequency = #{@cmd_frequency}\n"
-  conf.sub!(/^@history.*\n/, "")
+  conf.sub!(/^@history.*(\n|$)/, "")
   # Ensure history is properly formatted as valid Ruby array
   begin
     history_str = @history.last(@histsize).inspect
