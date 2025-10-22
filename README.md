@@ -33,7 +33,19 @@ Or simply `gem install ruby-shell`.
 * All colors are themeable in .rshrc (see github link for possibilities)
 * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
 
-## NEW in v3.0.0 - Major Feature Release ⭐⭐⭐
+## NEW in v3.1.0 - Quick Wins & Polish ⭐
+* **Multiple Named Sessions**: Save/load different sessions - `:save_session "project"`, `:load_session "project"`
+* **Stats Export**: Export analytics to CSV/JSON - `:stats --csv` or `:stats --json`
+* **Session Auto-save**: Set `@session_autosave = 300` in .rshrc for automatic 5-minute saves
+* **Bookmark Import/Export**: Share bookmarks - `:bm --export bookmarks.json`, `:bm --import bookmarks.json`
+* **Bookmark Statistics**: See usage patterns - `:bm --stats` shows tag distribution and analytics
+* **Color Themes**: 6 preset themes - `:theme solarized|dracula|gruvbox|nord|monokai|default`
+* **Config Management**: `:config` shows/sets history_dedup, session_autosave, completion settings
+* **Environment Variables**: `:env` lists/sets/exports environment variables
+* **Bookmark TAB Completion**: Bookmarks appear in TAB completion alongside commands
+* **List Sessions**: `:list_sessions` shows all saved sessions with timestamps and paths
+
+## v3.0.0 - Major Feature Release ⭐⭐⭐
 * **Persistent Ruby Functions**: defun functions now save to .rshrc and persist across sessions
 * **Smart Command Suggestions**: Typo detection with "Did you mean...?" suggestions using Levenshtein distance
 * **Command Analytics**: New `:stats` command shows usage statistics, performance metrics, and most-used commands
@@ -94,8 +106,8 @@ Special commands:
 * `:bm "name"` or `:bookmark "name"` bookmark current directory, `:bm "name path #tags"` with tags (NEW in v3.0)
 * `:bm` lists all bookmarks, just type bookmark name to jump (e.g., `work`) (NEW in v3.0)
 * `:bm "-name"` delete bookmark, `:bm "?tag"` search by tag (NEW in v3.0)
-* `:save_session` saves current shell session (pwd, history, bookmarks, defuns) (NEW in v3.0)
-* `:load_session` restores previously saved session (NEW in v3.0)
+* `:save_session "name"` saves named session, `:load_session "name"` loads session (NEW in v3.0)
+* `:list_sessions` shows all saved sessions, `:rmsession "name"` or `:rmsession "*"` deletes (NEW in v3.1)
 * `:info` shows introduction and feature overview
 * `:version` Shows the rsh version number and the last published gem file version
 * `:help` will display a compact command reference in two columns
@@ -222,6 +234,7 @@ Variable        | Description
 `@c_path`       | Color for valid path
 `@c_switch`     | Color for command switches/options
 `@c_bookmark`   | Color for bookmarks (NEW in v3.0)
+`@c_colon`      | Color for colon commands (NEW in v3.1)
 `@c_tabselect`  | Color for selected tabcompleted item
 `@c_taboption`  | Color for unselected tabcompleted item
 `@c_stamp`      | Color for time stamp/command

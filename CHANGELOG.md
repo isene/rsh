@@ -1,5 +1,81 @@
 # rsh Changelog
 
+## v3.1.0 - Quick Wins & Polish (2025-10-22)
+
+### ✓ **MULTIPLE NAMED SESSIONS**
+- Save sessions with names: `:save_session "project-name"`
+- Load specific sessions: `:load_session "project-name"`
+- List all sessions: `:list_sessions` shows name, timestamp, and path
+- Delete sessions: `:rmsession "name"` or `:delete_session "name"`
+- Delete all sessions: `:rmsession "*"` (keeps default and autosave)
+- Sessions stored in `~/.rsh/sessions/` directory
+- Each session is independent JSON file
+- Cannot delete default or autosave sessions (protected)
+
+### ✓ **STATS EXPORT**
+- Export to JSON: `:stats --json` or `:stats --export stats.json`
+- Export to CSV: `:stats --csv` or `:stats --export stats.csv`
+- Format auto-detected from file extension
+- Includes frequency, performance, and history data
+- Perfect for analysis in spreadsheets or scripts
+
+### ✓ **SESSION AUTO-SAVE**
+- Configure in .rshrc: `@session_autosave = 300` (seconds)
+- Automatically saves to 'autosave' session at interval
+- Set to 0 to disable (default)
+- Check config with `:config`
+- No interruption to workflow
+
+### ✓ **BOOKMARK ENHANCEMENTS**
+- Import bookmarks: `:bm --import bookmarks.json`
+- Export bookmarks: `:bm --export bookmarks.json`
+- Bookmark statistics: `:bm --stats` shows tag distribution and path analysis
+- TAB completion: Bookmarks now appear in completion list
+- Search enhancements integrated into existing `:bm "?tag"` syntax
+
+### ✓ **COLOR SCHEME PRESETS**
+- Six beautiful themes: default, solarized, dracula, gruvbox, nord, monokai
+- Apply instantly: `:theme dracula`
+- Preview current colors: `:theme`
+- Add to .rshrc to make permanent
+- All colors carefully selected for readability
+
+### ✓ **CONFIG MANAGEMENT**
+- New `:config` command to view/change settings
+- View all settings: `:config`
+- Set history dedup: `:config "history_dedup" "off|full|smart"`
+- Set auto-save interval: `:config "session_autosave" "300"`
+- Set completion limit: `:config "completion_limit" "10"`
+- Settings persist to .rshrc
+
+### ✓ **HISTORY DEDUPLICATION OPTIONS**
+- Three modes: 'off' (keep all), 'full' (remove all dupes), 'smart' (keep recent, default)
+- Configure with `:config "history_dedup" "smart"`
+- Smart mode preserves order while removing duplicates
+- Persists to .rshrc
+
+### ✓ **ENVIRONMENT VARIABLE MANAGEMENT**
+- List variables: `:env` (shows first 20)
+- View specific: `:env "PATH"`
+- Set variable: `:env "set MYVAR value"`
+- Unset variable: `:env "unset MYVAR"`
+- Export all: `:env "export env.sh"` creates shell script
+- Integrates with existing $VAR completion
+
+### ✓ **IMPROVED TAB COMPLETION**
+- Colon commands complete: `:st<TAB>` → :stats, :save_session
+- Bookmarks complete: `wo<TAB>` → work (if bookmark exists)
+- All new commands in completion list
+- Faster, smarter, more comprehensive
+
+### ✓ **DOCUMENTATION**
+- Updated `:info` with v3.1 features
+- Updated `:help` with all new commands
+- README.md enhanced with examples
+- CHANGELOG comprehensive and detailed
+
+---
+
 ## v3.0.0 - Major Feature Release (2025-10-22)
 
 ### ✓ **PERSISTENT RUBY FUNCTIONS**

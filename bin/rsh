@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.0.0" # Major release: Persistent defuns, switch caching, smart suggestions, analytics, tooltips, bookmarks, validation, sessions
+@version    = "3.1.0" # Quick wins: Multiple sessions, stats export, bookmark features, themes, config, env management
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -93,6 +93,7 @@ begin # Initialization
   @c_path      = 3                        # Color for valid path
   @c_switch    = 6                        # Color for switches/options
   @c_bookmark  = 13                       # Color for bookmarks
+  @c_colon     = 4                        # Color for colon commands
   @c_tabselect = 5                        # Color for selected tabcompleted item
   @c_taboption = 244                      # Color for unselected tabcompleted item
   @c_stamp     = 244                      # Color for time stamp/command
@@ -138,7 +139,13 @@ begin # Initialization
   @bookmarks = {}                         # Enhanced bookmarks with tags
   @defuns = {}                            # Store defun definitions for persistence
   @cmd_stats = {}                         # Command execution statistics
-  @session_file = Dir.home + '/.rsh_session' # Session save file
+  @session_dir = Dir.home + '/.rsh/sessions' # Sessions directory
+  @session_file = @session_dir + '/default.json' # Default session file
+  @session_autosave = 0                   # Auto-save interval (0 = disabled)
+  @session_last_save = Time.now.to_i      # Last auto-save timestamp
+  @history_dedup = 'smart'                # History dedup mode: 'off', 'full', 'smart'
+  Dir.mkdir(Dir.home + '/.rsh') unless Dir.exist?(Dir.home + '/.rsh')
+  Dir.mkdir(@session_dir) unless Dir.exist?(@session_dir)
   def pre_cmd; end                        # User-defined function to be run BEFORE command execution
   def post_cmd; end                       # User-defined function to be run AFTER  command execution
 end
@@ -146,7 +153,7 @@ end
 # HELP TEXT
 @info = <<~INFO
 
-  Hello #{@user}, welcome to rsh v3.0 - the Ruby SHell.
+  Hello #{@user}, welcome to rsh v3.1 - the Ruby SHell.
 
   rsh does not attempt to compete with the grand old shells like bash and zsh.
   It serves the specific needs and wants of its author. If you like it, then feel free
@@ -171,6 +178,18 @@ end
   * Option value completion - TAB complete values like --format=json
   * Syntax validation - Pre-execution warnings for dangerous or malformed commands
   * Unified command syntax - :nick, :gnick, :bm all work the same way (list/create/delete)
+
+  NEW in v3.1:
+  * Multiple named sessions - :save_session "project" and :load_session "project"
+  * Stats export - :stats --csv or :stats --json for data analysis
+  * Session auto-save - Set @session_autosave = 300 in .rshrc for 5-min auto-save
+  * Bookmark import/export - :bm --export file.json and :bm --import file.json
+  * Bookmark statistics - :bm --stats shows usage patterns and tag distribution
+  * Color themes - :theme solarized|dracula|gruvbox|nord|monokai
+  * Config management - :config shows/sets history_dedup, session_autosave, etc.
+  * Environment management - :env for listing/setting/exporting environment variables
+  * Bookmark TAB completion - Bookmarks appear in TAB completion list
+  * List sessions - :list_sessions shows all saved sessions with timestamps
 
   Config file (.rshrc) updates on exit (Ctrl-d) or not (Ctrl-e).
   All colors are themeable in .rshrc (see github link for possibilities).
@@ -206,6 +225,7 @@ def firstrun
   @c_path      = 208  # Color for valid path
   @c_switch    = 148  # Color for switches/options
   @c_bookmark  = 13   # Color for bookmarks
+  @c_colon     = 4    # Color for colon commands
   @c_tabselect = 207  # Color for selected tabcompleted item
   @c_taboption = 244  # Color for unselected tabcompleted item
   @c_stamp     = 244  # Color for time stamp/command
@@ -581,7 +601,9 @@ def tab(type)
       colon_cmds = %w[
         :nick :gnick :bm :bookmark :stats :defun :defun?
         :history :rmhistory :jobs :fg :bg
-        :save_session :load_session :info :version :help
+        :save_session :load_session :list_sessions :delete_session :rmsession
+        :config :env :theme
+        :info :version :help
       ]
       search_str = @tabstr[1..-1] || ""  # Remove leading :
       regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
@@ -593,6 +615,7 @@ def tab(type)
       ex.sort!
       ex.prepend(*@nick.keys)        # Add nicks
       ex.prepend(*@gnick.keys)       # Add gnicks
+      ex.prepend(*@bookmarks.keys) if @bookmarks  # Add bookmarks
 
       # Enhanced matching with case sensitivity and fuzzy support
       regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
@@ -840,9 +863,96 @@ def suggest_command(cmd) # Smart command suggestions for typos
   candidates.first(3)
 end
 def hist_clean # Clean up @history
-  @history.uniq!
   @history.compact!
   @history.delete("")
+
+  # Apply deduplication based on mode
+  case @history_dedup
+  when 'off'
+    # No deduplication
+  when 'full', 'smart'
+    # Remove duplicates, keeping first (most recent) occurrence
+    @history.uniq!
+  else
+    # Default to smart
+    @history.uniq!
+  end
+end
+def config(*args) # Configure rsh settings
+  setting = args[0]
+  value = args[1]
+
+  if setting.nil?
+    # Show current configuration
+    puts "\n  Current Configuration:".c(@c_prompt).b
+    puts "    history_dedup:      #{@history_dedup}"
+    puts "    session_autosave:   #{@session_autosave}s #{@session_autosave > 0 ? '(enabled)' : '(disabled)'}"
+    puts "    completion_limit:   #{@completion_limit}"
+    puts "    completion_fuzzy:   #{@completion_fuzzy}"
+    puts "    completion_case_sensitive: #{@completion_case_sensitive}"
+    puts
+    return
+  end
+
+  case setting
+  when 'history_dedup'
+    if %w[off full smart].include?(value)
+      @history_dedup = value
+      puts "History deduplication set to '#{value}'"
+      rshrc
+    else
+      puts "Invalid value. Use: off, full, or smart"
+    end
+  when 'session_autosave'
+    @session_autosave = value.to_i
+    puts "Session auto-save set to #{value}s #{value.to_i > 0 ? '(enabled)' : '(disabled)'}"
+    rshrc
+  when 'completion_limit'
+    @completion_limit = value.to_i
+    puts "Completion limit set to #{value}"
+    rshrc
+  else
+    puts "Unknown setting '#{setting}'"
+    puts "Available: history_dedup, session_autosave, completion_limit"
+  end
+end
+def env(*args) # Environment variable management
+  arg_str = args.join(' ')
+
+  if args.empty?
+    # List all environment variables
+    puts "\n  Environment Variables:".c(@c_prompt).b
+    ENV.sort.first(20).each do |key, value|
+      value_display = value.length > 50 ? value[0..47] + '...' : value
+      puts "    #{key.c(@c_gnick).ljust(25)} = #{value_display}"
+    end
+    puts "    ... (#{ENV.length} total, showing first 20)"
+    puts "\n  Use :env \"VARNAME\" to see specific variable"
+    puts
+  elsif arg_str =~ /^set\s+(\w+)\s+(.+)$/
+    # Set environment variable
+    var_name, var_value = $1, $2
+    ENV[var_name] = var_value
+    puts "#{var_name} = #{var_value}"
+  elsif arg_str =~ /^unset\s+(\w+)$/
+    # Unset environment variable
+    var_name = $1
+    ENV.delete(var_name)
+    puts "#{var_name} unset"
+  elsif arg_str =~ /^export\s+(.+)$/
+    # Export to shell script
+    filename = $1
+    File.write(filename, ENV.map { |k,v| "export #{k}=\"#{v}\"" }.join("\n"))
+    puts "Environment exported to #{filename}"
+  else
+    # Show specific variable
+    var_name = arg_str.strip
+    if ENV[var_name]
+      puts "#{var_name} = #{ENV[var_name]}"
+    else
+      puts "Environment variable '#{var_name}' not set"
+    end
+  end
 end
 def cmd_check(str) # Check if each element on the readline matches commands, nicks, paths; color them
   return if str.nil?
@@ -851,7 +961,14 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
   if str =~ /^(@@?)\s+(.*)$/
     prefix = $1
     rest = $2
-    return prefix.c(4) + " " + rest  # Color @ or @@ in blue (4), rest uncolored
+    return prefix.c(@c_colon) + " " + rest  # Color @ or @@ in colon color
+  end
+
+  # Special handling for : commands
+  if str =~ /^(:[\w?_]+)/
+    colon_cmd = $1
+    rest = str.sub(/^:[\w?_]+/, '')
+    return colon_cmd.c(@c_colon) + rest  # Color colon commands
   end
 
   str.gsub(/(?:\S'[^']*'|[^ '])+/) do |el|
@@ -903,6 +1020,10 @@ def rshrc # Write updates to .rshrc
   conf += "@bookmarks = #{@bookmarks}\n" unless @bookmarks.empty?
   conf.sub!(/^@defuns.*(\n|$)/, "")
   conf += "@defuns = #{@defuns}\n" unless @defuns.empty?
+  conf.sub!(/^@history_dedup.*(\n|$)/, "")
+  conf += "@history_dedup = '#{@history_dedup}'\n" if @history_dedup && @history_dedup != 'smart'
+  conf.sub!(/^@session_autosave.*(\n|$)/, "")
+  conf += "@session_autosave = #{@session_autosave}\n" if @session_autosave && @session_autosave > 0
   # Only write @cmd_completions if user has customized it
   unless conf =~ /^@cmd_completions\s*=/
     # Don't write default completions to avoid cluttering .rshrc
@@ -976,15 +1097,20 @@ def help
   right_col << ":fg [id]            Foreground job"
   right_col << ":bg [id]            Resume in bg"
   right_col << ""
-  right_col << "v3.0 NEW FEATURES:".c(@c_prompt).b
-  right_col << ":stats              Command analytics"
+  right_col << "v3.0/3.1 FEATURES:".c(@c_prompt).b
+  right_col << ":stats [--csv|--json] Analytics"
   right_col << ":bm \"name\"          Create bookmark"
   right_col << "name                Jump to bookmark"
-  right_col << ":bm                 List bookmarks"
-  right_col << ":bm \"-name\"         Delete bookmark"
-  right_col << ":bm \"?tag\"          Search by tag"
-  right_col << ":save_session       Save session"
-  right_col << ":load_session       Restore session"
+  right_col << ":bm --stats         Bookmark stats"
+  right_col << ":bm --export file   Export bookmarks"
+  right_col << ":bm --import file   Import bookmarks"
+  right_col << ":save_session [nm]  Save session"
+  right_col << ":load_session [nm]  Load session"
+  right_col << ":list_sessions      List all sessions"
+  right_col << ":rmsession name|*   Delete session(s)"
+  right_col << ":theme [name]       Color presets"
+  right_col << ":config [set val]   Settings"
+  right_col << ":env [VARNAME]      Env management"
   right_col << ""
   right_col << "INTEGRATIONS:".c(@c_prompt).b
   right_col << "r                   Launch rtfm"
@@ -1188,7 +1314,26 @@ def defun?  # Show all user-defined functions
     end
   end
 end
-def stats # Show command execution statistics and analytics
+def stats(*args) # Show command execution statistics and analytics
+  format = args[0]
+  filename = args[1]
+
+  if format == "--export"
+    # Export to file
+    fname = filename || "rsh_stats.json"
+    export_stats(fname)
+    return
+  elsif format == "--json"
+    fname = filename || "rsh_stats.json"
+    export_stats_json(fname)
+    return
+  elsif format == "--csv"
+    fname = filename || "rsh_stats.csv"
+    export_stats_csv(fname)
+    return
+  end
+
+  # Display stats (existing code)
   puts "\n  Command Execution Statistics".c(@c_prompt).b
   puts "  " + "="*50
 
@@ -1228,11 +1373,62 @@ def stats # Show command execution statistics and analytics
   puts "\n  Last command exit status: #{@last_exit == 0 ? 'Success'.c(@c_path) : "Failed (#{@last_exit})".c(196)}"
   puts
 end
-def bm(args = nil) # Enhanced bookmark management with tags
-  if args.nil? || args.empty?
+def export_stats(filename) # Export stats to file (JSON or CSV based on extension)
+  if filename.end_with?('.csv')
+    export_stats_csv(filename)
+  else
+    filename += '.json' unless filename.end_with?('.json')
+    export_stats_json(filename)
+  end
+end
+def export_stats_json(filename = 'rsh_stats.json') # Export stats to JSON
+  stats_data = {
+    generated: Time.now.to_i,
+    cmd_frequency: @cmd_frequency,
+    cmd_stats: @cmd_stats,
+    history: {
+      total: @history.length,
+      unique: @history.uniq.length
+    },
+    last_exit: @last_exit
+  }
+  begin
+    require 'json'
+    File.write(filename, JSON.pretty_generate(stats_data))
+    puts "Stats exported to #{filename}"
+  rescue => e
+    puts "Error exporting stats: #{e.message}"
+  end
+end
+def export_stats_csv(filename = 'rsh_stats.csv') # Export stats to CSV
+  begin
+    lines = []
+    lines << "command,frequency,count,total_time,avg_time"
+
+    # Merge frequency and performance data
+    all_cmds = (@cmd_frequency.keys + @cmd_stats.keys).uniq
+    all_cmds.sort.each do |cmd|
+      freq = @cmd_frequency[cmd] || 0
+      count = @cmd_stats.dig(cmd, :count) || 0
+      total = @cmd_stats.dig(cmd, :total_time) || 0.0
+      avg = @cmd_stats.dig(cmd, :avg_time) || 0.0
+      lines << "#{cmd},#{freq},#{count},#{'%.3f' % total},#{'%.3f' % avg}"
+    end
+
+    File.write(filename, lines.join("\n"))
+    puts "Stats exported to #{filename}"
+  rescue => e
+    puts "Error exporting stats: #{e.message}"
+  end
+end
+def bm(*args) # Enhanced bookmark management with tags
+  # Handle variadic arguments
+  arg_str = args.join(' ')
+
+  if args.empty?
     # List all bookmarks
     if @bookmarks.empty?
-      puts "No bookmarks defined. Use :bookmark <name> to bookmark current directory"
+      puts "No bookmarks defined. Use :bm \"name\" to bookmark current directory"
       return
     end
     puts "\n  Bookmarks:".c(@c_prompt).b
@@ -1242,7 +1438,18 @@ def bm(args = nil) # Enhanced bookmark management with tags
       puts "  #{name.c(@c_nick)} → #{path}#{tags.c(@c_stamp)}"
     end
     puts
-  elsif args =~ /^(\w+)\s+(.+)$/
+  elsif args[0] == '--export'
+    # Export bookmarks to file
+    filename = args[1] || 'bookmarks.json'
+    export_bookmarks(filename)
+  elsif args[0] == '--import'
+    # Import bookmarks from file
+    filename = args[1]
+    import_bookmarks(filename) if filename
+  elsif args[0] == '--stats'
+    # Show bookmark statistics
+    bookmark_stats
+  elsif arg_str =~ /^(\w+)\s+(.+)$/
     # Set bookmark with optional tags
     name, rest = $1, $2
     if rest.include?('#')
@@ -1256,7 +1463,7 @@ def bm(args = nil) # Enhanced bookmark management with tags
     end
     puts "Bookmark '#{name}' set to #{@bookmarks[name][:path]}"
     rshrc
-  elsif args =~ /^-(\w+)$/
+  elsif arg_str =~ /^-(\w+)$/
     # Delete bookmark
     name = $1
     if @bookmarks.delete(name)
@@ -1265,7 +1472,7 @@ def bm(args = nil) # Enhanced bookmark management with tags
     else
       puts "Bookmark '#{name}' not found"
     end
-  elsif args =~ /^\?(\w*)$/
+  elsif arg_str =~ /^\?(\w*)$/
     # Search bookmarks by tag
     tag = $1
     if tag.empty?
@@ -1285,17 +1492,82 @@ def bm(args = nil) # Enhanced bookmark management with tags
     end
   else
     # Bookmark current directory
-    name = args.strip
+    name = arg_str.strip
     @bookmarks[name] = {path: Dir.pwd, tags: []}
     puts "Bookmark '#{name}' set to #{Dir.pwd}"
     rshrc
   end
 end
-def bookmark(args = nil) # Alias for bm
-  bm(args)
+def bookmark(*args) # Alias for bm
+  bm(*args)
 end
-def save_session # Save current session state
+def export_bookmarks(filename = 'bookmarks.json') # Export bookmarks to JSON
+  begin
+    require 'json'
+    File.write(filename, JSON.pretty_generate(@bookmarks))
+    puts "Bookmarks exported to #{filename}"
+  rescue => e
+    puts "Error exporting bookmarks: #{e.message}"
+  end
+end
+def import_bookmarks(filename) # Import bookmarks from JSON
+  unless File.exist?(filename)
+    puts "File '#{filename}' not found"
+    return
+  end
+  begin
+    require 'json'
+    imported = JSON.parse(File.read(filename))
+    imported.each do |name, data|
+      # Convert to proper format
+      if data.is_a?(Hash)
+        @bookmarks[name] = {
+          path: data['path'] || data[:path],
+          tags: data['tags'] || data[:tags] || []
+        }.transform_keys(&:to_sym)
+      else
+        @bookmarks[name] = {path: data.to_s, tags: []}
+      end
+    end
+    puts "Imported #{imported.length} bookmarks from #{filename}"
+    rshrc
+  rescue => e
+    puts "Error importing bookmarks: #{e.message}"
+  end
+end
+def bookmark_stats # Show bookmark usage statistics
+  if @bookmarks.empty?
+    puts "No bookmarks defined"
+    return
+  end
+
+  puts "\n  Bookmark Statistics".c(@c_prompt).b
+  puts "  " + "="*50
+  puts "\n  Total bookmarks: #{@bookmarks.length}"
+
+  # Count by tags
+  all_tags = @bookmarks.values.flat_map { |d| d.is_a?(Hash) ? (d[:tags] || []) : [] }
+  unless all_tags.empty?
+    puts "\n  Tags Distribution:".c(@c_nick)
+    tag_counts = all_tags.group_by(&:itself).transform_values(&:count)
+    tag_counts.sort_by { |_, count| -count }.each do |tag, count|
+      puts "    #{tag.ljust(15)} #{count}x"
+    end
+  end
+
+  # Bookmarks by directory depth
+  puts "\n  Path Analysis:".c(@c_nick)
+  paths = @bookmarks.values.map { |d| d.is_a?(Hash) ? d[:path] : d }
+  avg_depth = paths.map { |p| p.split('/').length }.sum / paths.length
+  puts "    Average path depth: #{avg_depth}"
+  puts
+end
+def save_session(*args) # Save current session state
+  session_name = args[0] || 'default'
+  session_path = @session_dir + "/#{session_name}.json"
+
   session = {
+    name: session_name,
     pwd: Dir.pwd,
     history: @history.first(50),
     bookmarks: @bookmarks,
@@ -1304,20 +1576,24 @@ def save_session # Save current session state
   }
   begin
     require 'json'
-    File.write(@session_file, JSON.pretty_generate(session))
-    puts "Session saved to #{@session_file}"
+    File.write(session_path, JSON.pretty_generate(session))
+    puts "Session '#{session_name}' saved to #{session_path}"
   rescue => e
     puts "Error saving session: #{e.message}"
   end
 end
-def load_session # Restore previous session
-  unless File.exist?(@session_file)
-    puts "No saved session found"
+def load_session(*args) # Restore previous session
+  session_name = args[0] || 'default'
+  session_path = @session_dir + "/#{session_name}.json"
+
+  unless File.exist?(session_path)
+    puts "Session '#{session_name}' not found"
+    list_sessions
     return
   end
   begin
     require 'json'
-    session = JSON.parse(File.read(@session_file), symbolize_names: true)
+    session = JSON.parse(File.read(session_path), symbolize_names: true)
 
     # Restore state
     Dir.chdir(session[:pwd]) if session[:pwd] && Dir.exist?(session[:pwd])
@@ -1350,11 +1626,123 @@ def load_session # Restore previous session
     end
 
     saved_time = Time.at(session[:timestamp] || 0).strftime("%Y-%m-%d %H:%M:%S")
-    puts "Session restored from #{saved_time}"
+    puts "Session '#{session_name}' restored from #{saved_time}"
     rshrc
   rescue => e
     puts "Error loading session: #{e.message}"
   end
+end
+def list_sessions # List all saved sessions
+  unless Dir.exist?(@session_dir)
+    puts "No sessions directory found"
+    return
+  end
+
+  sessions = Dir.glob(@session_dir + '/*.json').map { |f| File.basename(f, '.json') }
+
+  if sessions.empty?
+    puts "No saved sessions found. Use :save_session \"name\" to create one"
+    return
+  end
+
+  puts "\n  Saved Sessions:".c(@c_prompt).b
+  sessions.sort.each do |name|
+    session_path = @session_dir + "/#{name}.json"
+    begin
+      require 'json'
+      session = JSON.parse(File.read(session_path), symbolize_names: true)
+      timestamp = Time.at(session[:timestamp] || 0).strftime("%Y-%m-%d %H:%M")
+      pwd = session[:pwd] || '?'
+      puts "  #{name.c(@c_bookmark).ljust(20)} #{timestamp.c(@c_stamp)} #{pwd.c(@c_path)}"
+    rescue => e
+      puts "  #{name.c(@c_bookmark).ljust(20)} [corrupted]".c(196)
+    end
+  end
+  puts
+end
+def delete_session(*args) # Delete a saved session
+  name = args[0]
+
+  if name == '*'
+    # Delete all sessions except default
+    sessions = Dir.glob(@session_dir + '/*.json').map { |f| File.basename(f, '.json') }
+    sessions.reject! { |s| s == 'default' || s == 'autosave' }
+
+    if sessions.empty?
+      puts "No sessions to delete (keeping default and autosave)"
+      return
+    end
+
+    sessions.each do |session_name|
+      session_path = @session_dir + "/#{session_name}.json"
+      File.delete(session_path)
+    end
+    puts "Deleted #{sessions.length} sessions: #{sessions.join(', ')}"
+    return
+  end
+
+  return puts "Cannot delete default session" if name == 'default'
+  return puts "Cannot delete autosave session (use * to delete all)" if name == 'autosave'
+
+  session_path = @session_dir + "/#{name}.json"
+  unless File.exist?(session_path)
+    puts "Session '#{name}' not found"
+    return
+  end
+
+  File.delete(session_path)
+  puts "Session '#{name}' deleted"
+end
+def rmsession(*args) # Alias for delete_session
+  delete_session(*args)
+end
+def theme(*args) # Apply color scheme presets
+  name = args[0]
+
+  if name.nil?
+    puts "\n  Available themes:".c(@c_prompt).b
+    puts "    default, solarized, dracula, gruvbox, nord, monokai"
+    puts "\n  Current theme colors:"
+    puts "    prompt:#{' '*5}#{@c_prompt}   cmd:#{' '*8}#{@c_cmd}   nick:#{' '*7}#{@c_nick}"
+    puts "    gnick:#{' '*6}#{@c_gnick}   path:#{' '*7}#{@c_path}   switch:#{' '*5}#{@c_switch}"
+    puts "    bookmark:#{' '*3}#{@c_bookmark}   colon:#{' '*6}#{@c_colon}   tabselect:#{' '*2}#{@c_tabselect}"
+    puts "    taboption:#{' '*2}#{@c_taboption}   stamp:#{' '*6}#{@c_stamp}"
+    puts
+    return
+  end
+
+  case name.downcase
+  when 'default'
+    @c_prompt, @c_cmd, @c_nick, @c_gnick = 10, 2, 6, 14
+    @c_path, @c_switch, @c_bookmark, @c_colon = 3, 6, 13, 4
+    @c_tabselect, @c_taboption, @c_stamp = 5, 244, 244
+  when 'solarized'
+    @c_prompt, @c_cmd, @c_nick, @c_gnick = 33, 64, 37, 117
+    @c_path, @c_switch, @c_bookmark, @c_colon = 136, 125, 61, 33
+    @c_tabselect, @c_taboption, @c_stamp = 166, 240, 240
+  when 'dracula'
+    @c_prompt, @c_cmd, @c_nick, @c_gnick = 141, 84, 117, 212
+    @c_path, @c_switch, @c_bookmark, @c_colon = 228, 215, 141, 141
+    @c_tabselect, @c_taboption, @c_stamp = 212, 238, 238
+  when 'gruvbox'
+    @c_prompt, @c_cmd, @c_nick, @c_gnick = 214, 142, 109, 175
+    @c_path, @c_switch, @c_bookmark, @c_colon = 208, 142, 167, 214
+    @c_tabselect, @c_taboption, @c_stamp = 208, 243, 243
+  when 'nord'
+    @c_prompt, @c_cmd, @c_nick, @c_gnick = 110, 109, 116, 152
+    @c_path, @c_switch, @c_bookmark, @c_colon = 180, 109, 139, 110
+    @c_tabselect, @c_taboption, @c_stamp = 143, 240, 240
+  when 'monokai'
+    @c_prompt, @c_cmd, @c_nick, @c_gnick = 197, 112, 81, 141
+    @c_path, @c_switch, @c_bookmark, @c_colon = 228, 208, 141, 197
+    @c_tabselect, @c_taboption, @c_stamp = 197, 238, 238
+  else
+    puts "Unknown theme '#{name}'. Available: default, solarized, dracula, gruvbox, nord, monokai"
+    return
+  end
+
+  puts "Theme '#{name}' applied"
+  puts "Add this to .rshrc to make it permanent: :theme \"#{name}\""
 end
 def validate_command(cmd) # Syntax validation before execution
   return nil if cmd.nil? || cmd.empty?
@@ -1665,6 +2053,8 @@ def load_rshrc_safe
     @cmd_stats = {} unless @cmd_stats.is_a?(Hash)
     @bookmarks = {} unless @bookmarks.is_a?(Hash)
     @defuns = {} unless @defuns.is_a?(Hash)
+    @history_dedup = 'smart' unless @history_dedup.is_a?(String)
+    @session_autosave = 0 unless @session_autosave.is_a?(Integer)
 
     # Restore defuns from .rshrc
     if @defuns && !@defuns.empty?
@@ -1799,6 +2189,8 @@ def load_defaults
   @defuns ||= {}
   @switch_cache ||= {}
   @switch_cache_time ||= {}
+  @history_dedup ||= 'smart'
+  @session_autosave ||= 0
   puts "Loaded with default configuration."
 end
 
@@ -1884,6 +2276,14 @@ loop do
     system("printf \"\033]0;rsh: #{Dir.pwd}\007\"")   # Set Window title to path 
     @history[0] = "" unless @history[0]
     cache_executables  # Use cached executable lookup
+    # Auto-save session if enabled and interval elapsed
+    if @session_autosave && @session_autosave > 0
+      current_time = Time.now.to_i
+      if (current_time - @session_last_save) >= @session_autosave
+        save_session('autosave')
+        @session_last_save = current_time
+      end
+    end
     getstr # Main work is here
     @cmd = @history[0]
     @dirs.unshift(Dir.pwd)
@@ -1988,6 +2388,7 @@ loop do
         elsif @bookmarks && @bookmarks[@cmd]
           bookmark_data = @bookmarks[@cmd]
           bm_dir = bookmark_data.is_a?(Hash) ? bookmark_data[:path] : bookmark_data
+          bm_dir = bm_dir.sub(/^~/, Dir.home)  # Expand tilde
           if Dir.exist?(bm_dir)
             Dir.chdir(bm_dir)
             puts "Jumped to bookmark '#{@cmd}' → #{bm_dir}".c(@c_path)
