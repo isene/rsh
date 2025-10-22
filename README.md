@@ -33,7 +33,22 @@ Or simply `gem install ruby-shell`.
 * All colors are themeable in .rshrc (see github link for possibilities)
 * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
 
-## NEW in v3.1.0 - Quick Wins & Polish ⭐
+## NEW in v3.2.0 - Plugin System & Productivity ⭐⭐⭐
+* **Plugin Architecture**: Extensible plugin system with lifecycle hooks and extension points
+* **Lifecycle Hooks**: on_startup, on_command_before, on_command_after, on_prompt
+* **Extension Points**: add_completions (TAB completion), add_commands (custom commands)
+* **Plugin Management**: `:plugins` list/reload/enable/disable/info commands
+* **Auto-loading**: Plugins in `~/.rsh/plugins/` load automatically on startup
+* **Safe Execution**: Isolated plugin execution with error handling, no shell crashes
+* **Example Plugins**: git_prompt (branch in prompt), command_logger (audit log), kubectl_completion (k8s shortcuts)
+* **Auto-correct Typos**: `:config "auto_correct", "on"` with user confirmation (Y/n) before applying
+* **Command Timing Alerts**: `:config "slow_command_threshold", "5"` warns on commands > 5 seconds
+* **Inline Calculator**: `:calc 2 + 2`, `:calc "Math::PI"` - full Ruby Math library support
+* **Enhanced History**: `!!` (last), `!-2` (2nd to last), `!5:7` (chain commands 5-7)
+* **Stats Visualization**: `:stats --graph` for colorful ASCII bar charts with intensity colors
+* **Documentation**: Complete PLUGIN_GUIDE.md with API reference and examples
+
+## v3.1.0 - Quick Wins & Polish ⭐
 * **Multiple Named Sessions**: Save/load different sessions - `:save_session "project"`, `:load_session "project"`
 * **Stats Export**: Export analytics to CSV/JSON - `:stats --csv` or `:stats --json`
 * **Session Auto-save**: Set `@session_autosave = 300` in .rshrc for automatic 5-minute saves
@@ -108,6 +123,8 @@ Special commands:
 * `:bm "-name"` delete bookmark, `:bm "?tag"` search by tag (NEW in v3.0)
 * `:save_session "name"` saves named session, `:load_session "name"` loads session (NEW in v3.0)
 * `:list_sessions` shows all saved sessions, `:rmsession "name"` or `:rmsession "*"` deletes (NEW in v3.1)
+* `:theme "name"` applies color scheme, `:config` manages settings, `:env` manages environment (NEW in v3.1)
+* `:plugins` lists plugins, `:plugins "disable", "name"` disables, `:plugins "reload"` reloads (NEW in v3.2)
 * `:info` shows introduction and feature overview
 * `:version` Shows the rsh version number and the last published gem file version
 * `:help` will display a compact command reference in two columns
@@ -209,6 +226,52 @@ Ruby functions have access to:
 - Network requests
 - JSON/XML parsing
 - And everything else Ruby can do!
+
+## Plugin System (v3.2.0+)
+
+rsh supports a powerful plugin system for extending functionality. Plugins are Ruby classes placed in `~/.rsh/plugins/` that can:
+
+- Add custom commands
+- Add TAB completions
+- Hook into command execution (before/after)
+- Modify the prompt
+- Access rsh internals (history, bookmarks, etc.)
+
+**Quick Start:**
+```ruby
+# Create ~/.rsh/plugins/hello.rb
+class HelloPlugin
+  def initialize(rsh_context)
+    @rsh = rsh_context
+  end
+
+  def add_commands
+    {
+      "hello" => lambda { |*args| "Hello, #{args[0] || 'World'}!" }
+    }
+  end
+end
+```
+
+Then in rsh: `hello Geir` outputs `Hello, Geir!`
+
+**Plugin Management:**
+```bash
+:plugins                        # List all loaded plugins
+:plugins "disable", "git_prompt"  # Disable a plugin
+:plugins "enable", "git_prompt"   # Enable a plugin
+:plugins "reload"                 # Reload all plugins
+:plugins "info", "plugin_name"    # Show plugin details
+```
+
+**Included Example Plugins:**
+- **git_prompt** - Shows current git branch in prompt
+- **command_logger** - Logs all commands with timestamps (`show_log` to view)
+- **kubectl_completion** - Kubernetes shortcuts and completions (k, kns, kctx)
+
+**See PLUGIN_GUIDE.md for complete development documentation.**
+
+---
 
 ## Integrations
 rsh is integrated with the [rtfm file manager](https://github.com/isene/RTFM), with [fzf](https://github.com/junegunn/fzf) and with the programming language [XRPN](https://github.com/isene/xrpn). 

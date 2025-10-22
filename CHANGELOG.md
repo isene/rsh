@@ -1,5 +1,98 @@
 # rsh Changelog
 
+## v3.2.0 - Plugin System (2025-10-22)
+
+### ✓ **PLUGIN ARCHITECTURE**
+- Extensible plugin system for customizing and extending rsh
+- Plugins are Ruby classes in `~/.rsh/plugins/`
+- Auto-discovery and loading on startup
+- Safe isolated execution with comprehensive error handling
+- Zero crashes from bad plugins - graceful degradation
+
+### ✓ **LIFECYCLE HOOKS**
+- `on_startup` - Called when plugin loads
+- `on_command_before(cmd)` - Called before command execution, can block or modify
+- `on_command_after(cmd, exit_code)` - Called after command completes
+- `on_prompt` - Called when generating prompt, can append to prompt
+
+### ✓ **EXTENSION POINTS**
+- `add_completions` - Add TAB completions for custom commands
+- `add_commands` - Register new shell commands as lambdas
+- Full access to rsh context (history, bookmarks, config, etc.)
+- Commands execute before defuns and system commands
+
+### ✓ **PLUGIN MANAGEMENT**
+- `:plugins` - List all loaded plugins with status
+- `:plugins "reload"` - Reload all plugins without restarting shell
+- `:plugins "enable", "name"` - Enable disabled plugin
+- `:plugins "disable", "name"` - Disable plugin
+- `:plugins "info", "name"` - Show plugin details (hooks, extensions)
+- Disabled plugins list persists to .rshrc
+
+### ✓ **EXAMPLE PLUGINS INCLUDED**
+- **git_prompt.rb** - Shows current git branch in prompt
+- **command_logger.rb** - Logs all commands to ~/.rsh_command.log with show_log command
+- **kubectl_completion.rb** - kubectl/k8s completions and shortcuts (k, kns, kctx)
+
+### ✓ **COMPREHENSIVE DOCUMENTATION**
+- PLUGIN_GUIDE.md - Complete API reference
+- Plugin templates for all patterns
+- Security best practices
+- Debugging guide
+- 5 complete working examples
+
+### ✓ **AUTO-CORRECT TYPOS**
+- Automatically suggests corrections for mistyped commands
+- Enable with `:config "auto_correct", "on"`
+- Uses Levenshtein distance to find closest match
+- Prompts for confirmation before applying (Y/n)
+- Shows "AUTO-CORRECTING: 'gti' → 'gtf'" in orange
+- Works with system commands, nicks, and user defuns
+
+### ✓ **COMMAND TIMING ALERTS**
+- Warns when commands exceed time threshold
+- Configure with `:config "slow_command_threshold", "5"` (seconds)
+- Shows: "⚠ Command took 7.2s (threshold: 5s)" in orange
+- Helps identify performance bottlenecks
+- Set to 0 to disable (default)
+
+### ✓ **INLINE CALCULATOR**
+- Ruby-powered calculator with Math library
+- `:calc 2 + 2` → 4
+- `:calc "Math::PI * 2"` → 6.283185307179586
+- `:calc "Math.sqrt(16)"` → 4.0
+- Full Ruby expressions supported
+- Safer than eval, proper error handling
+
+### ✓ **ENHANCED HISTORY COMMANDS**
+- `!!` - Repeat last command
+- `!-2` - Repeat 2nd to last command
+- `!5:7` - Chain commands 5, 6, 7 with &&
+- Shows "Chaining: cmd1 && cmd2 && cmd3" before execution
+- All original !N syntax still works
+
+### ✓ **STATS VISUALIZATION**
+- `:stats --graph` shows colorful ASCII bar charts
+- Usage graph: Color-coded by intensity (gray → yellow → orange → red)
+- Performance graph: Color-coded by speed (green → orange → red)
+- Uses █ blocks for visual appeal
+- Scaled to terminal width (40 chars max)
+
+### ✓ **COLON COMMAND THEMING**
+- New `@c_colon` color variable for :commands
+- All 6 themes updated with colon colors
+- Consistent visual language across shell
+- :calc added to colon TAB completion
+
+### ✓ **CODE QUALITY**
+- Clean plugin API design
+- Comprehensive test suite (test_plugins.rb)
+- All example plugins tested and working
+- ~400 lines of new infrastructure
+- Zero breaking changes from v3.1
+
+---
+
 ## v3.1.0 - Quick Wins & Polish (2025-10-22)
 
 ### ✓ **MULTIPLE NAMED SESSIONS**

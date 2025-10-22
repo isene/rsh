@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.1.0" # Quick wins: Multiple sessions, stats export, bookmark features, themes, config, env management
+@version    = "3.2.0" # Plugin system: Extensible architecture with lifecycle hooks, completions, commands, and plugin management
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -144,8 +144,16 @@ begin # Initialization
   @session_autosave = 0                   # Auto-save interval (0 = disabled)
   @session_last_save = Time.now.to_i      # Last auto-save timestamp
   @history_dedup = 'smart'                # History dedup mode: 'off', 'full', 'smart'
+  @auto_correct = false                   # Auto-correct typos (default: off)
+  @slow_command_threshold = 0             # Threshold for slow command alerts (0 = disabled)
+  @plugin_dir = Dir.home + '/.rsh/plugins' # Plugins directory
+  @plugins = []                           # Loaded plugin instances
+  @plugin_disabled = []                   # List of disabled plugin names
+  @plugin_commands = {}                   # Commands added by plugins
+  # Built-in rsh commands are called with : prefix, so no need for separate tracking
   Dir.mkdir(Dir.home + '/.rsh') unless Dir.exist?(Dir.home + '/.rsh')
   Dir.mkdir(@session_dir) unless Dir.exist?(@session_dir)
+  Dir.mkdir(@plugin_dir) unless Dir.exist?(@plugin_dir)
   def pre_cmd; end                        # User-defined function to be run BEFORE command execution
   def post_cmd; end                       # User-defined function to be run AFTER  command execution
 end
@@ -153,7 +161,7 @@ end
 # HELP TEXT
 @info = <<~INFO
 
-  Hello #{@user}, welcome to rsh v3.1 - the Ruby SHell.
+  Hello #{@user}, welcome to rsh v3.2 - the Ruby SHell.
 
   rsh does not attempt to compete with the grand old shells like bash and zsh.
   It serves the specific needs and wants of its author. If you like it, then feel free
@@ -179,7 +187,19 @@ end
   * Syntax validation - Pre-execution warnings for dangerous or malformed commands
   * Unified command syntax - :nick, :gnick, :bm all work the same way (list/create/delete)
 
-  NEW in v3.1:
+  NEW in v3.2:
+  * Plugin system - Extensible architecture for custom commands, completions, and hooks
+  * Lifecycle hooks - on_startup, on_command_before, on_command_after, on_prompt
+  * Plugin management - :plugins list/reload/enable/disable/info
+  * Example plugins - git_prompt, command_logger, kubectl_completion included
+  * Auto-correct typos - :config "auto_correct" "on" automatically fixes gti → closest match
+  * Command timing alerts - :config "slow_command_threshold" "5" warns on slow commands
+  * Inline calculator - :calc 2 + 2, :calc "Math.sqrt(16)", full Ruby Math library
+  * Enhanced history - !!, !-2, !5:7 for repeat last, nth-to-last, and chaining
+  * Stats visualization - :stats --graph for colorful ASCII bar charts
+  * See PLUGIN_GUIDE.md for complete plugin development documentation
+
+  v3.1 Features:
   * Multiple named sessions - :save_session "project" and :load_session "project"
   * Stats export - :stats --csv or :stats --json for data analysis
   * Session auto-save - Set @session_autosave = 300 in .rshrc for 5-min auto-save
@@ -188,8 +208,6 @@ end
   * Color themes - :theme solarized|dracula|gruvbox|nord|monokai
   * Config management - :config shows/sets history_dedup, session_autosave, etc.
   * Environment management - :env for listing/setting/exporting environment variables
-  * Bookmark TAB completion - Bookmarks appear in TAB completion list
-  * List sessions - :list_sessions shows all saved sessions with timestamps
 
   Config file (.rshrc) updates on exit (Ctrl-d) or not (Ctrl-e).
   All colors are themeable in .rshrc (see github link for possibilities).
@@ -602,7 +620,7 @@ def tab(type)
         :nick :gnick :bm :bookmark :stats :defun :defun?
         :history :rmhistory :jobs :fg :bg
         :save_session :load_session :list_sessions :delete_session :rmsession
-        :config :env :theme
+        :config :env :theme :plugins :calc
         :info :version :help
       ]
       search_str = @tabstr[1..-1] || ""  # Remove leading :
@@ -887,6 +905,8 @@ def config(*args) # Configure rsh settings
     puts "\n  Current Configuration:".c(@c_prompt).b
     puts "    history_dedup:      #{@history_dedup}"
     puts "    session_autosave:   #{@session_autosave}s #{@session_autosave > 0 ? '(enabled)' : '(disabled)'}"
+    puts "    auto_correct:       #{@auto_correct ? 'on' : 'off'}"
+    puts "    slow_command_threshold: #{@slow_command_threshold}s #{@slow_command_threshold > 0 ? '(enabled)' : '(disabled)'}"
     puts "    completion_limit:   #{@completion_limit}"
     puts "    completion_fuzzy:   #{@completion_fuzzy}"
     puts "    completion_case_sensitive: #{@completion_case_sensitive}"
@@ -907,13 +927,21 @@ def config(*args) # Configure rsh settings
     @session_autosave = value.to_i
     puts "Session auto-save set to #{value}s #{value.to_i > 0 ? '(enabled)' : '(disabled)'}"
     rshrc
+  when 'auto_correct'
+    @auto_correct = %w[on true yes 1].include?(value.to_s.downcase)
+    puts "Auto-correct #{@auto_correct ? 'enabled' : 'disabled'}"
+    rshrc
+  when 'slow_command_threshold'
+    @slow_command_threshold = value.to_i
+    puts "Slow command threshold set to #{value}s #{value.to_i > 0 ? '(enabled)' : '(disabled)'}"
+    rshrc
   when 'completion_limit'
     @completion_limit = value.to_i
     puts "Completion limit set to #{value}"
     rshrc
   else
     puts "Unknown setting '#{setting}'"
-    puts "Available: history_dedup, session_autosave, completion_limit"
+    puts "Available: history_dedup, session_autosave, auto_correct, slow_command_threshold, completion_limit"
   end
 end
 def env(*args) # Environment variable management
@@ -1024,6 +1052,12 @@ def rshrc # Write updates to .rshrc
   conf += "@history_dedup = '#{@history_dedup}'\n" if @history_dedup && @history_dedup != 'smart'
   conf.sub!(/^@session_autosave.*(\n|$)/, "")
   conf += "@session_autosave = #{@session_autosave}\n" if @session_autosave && @session_autosave > 0
+  conf.sub!(/^@auto_correct.*(\n|$)/, "")
+  conf += "@auto_correct = #{@auto_correct}\n" if @auto_correct
+  conf.sub!(/^@slow_command_threshold.*(\n|$)/, "")
+  conf += "@slow_command_threshold = #{@slow_command_threshold}\n" if @slow_command_threshold && @slow_command_threshold > 0
+  conf.sub!(/^@plugin_disabled.*(\n|$)/, "")
+  conf += "@plugin_disabled = #{@plugin_disabled}\n" unless @plugin_disabled.empty?
   # Only write @cmd_completions if user has customized it
   unless conf =~ /^@cmd_completions\s*=/
     # Don't write default completions to avoid cluttering .rshrc
@@ -1097,20 +1131,28 @@ def help
   right_col << ":fg [id]            Foreground job"
   right_col << ":bg [id]            Resume in bg"
   right_col << ""
+  right_col << "v3.2 NEW FEATURES:".c(@c_prompt).b
+  right_col << ":plugins [cmd]      Plugin system"
+  right_col << ":stats --graph      Visual bar charts"
+  right_col << ":calc 2 + 2         Ruby calculator"
+  right_col << "!!, !-2, !5:7       History repeat/chain"
+  right_col << ":config auto_correct Auto-fix (w/confirm)"
+  right_col << ":config slow_cmd... Slow alerts"
+  right_col << ""
+  right_col << "PLUGIN SYSTEM:".c(@c_prompt).b
+  right_col << ":plugins            List all"
+  right_col << ":plugins reload     Reload"
+  right_col << ":plugins disable nm Disable"
+  right_col << ":plugins info nm    Details"
+  right_col << ""
   right_col << "v3.0/3.1 FEATURES:".c(@c_prompt).b
-  right_col << ":stats [--csv|--json] Analytics"
-  right_col << ":bm \"name\"          Create bookmark"
-  right_col << "name                Jump to bookmark"
-  right_col << ":bm --stats         Bookmark stats"
-  right_col << ":bm --export file   Export bookmarks"
-  right_col << ":bm --import file   Import bookmarks"
-  right_col << ":save_session [nm]  Save session"
-  right_col << ":load_session [nm]  Load session"
-  right_col << ":list_sessions      List all sessions"
-  right_col << ":rmsession name|*   Delete session(s)"
-  right_col << ":theme [name]       Color presets"
-  right_col << ":config [set val]   Settings"
-  right_col << ":env [VARNAME]      Env management"
+  right_col << ":stats --clear      Clear stats"
+  right_col << ":stats --csv|--json Export stats"
+  right_col << ":bm \"name\"          Bookmarks"
+  right_col << ":save_session [nm]  Sessions"
+  right_col << ":theme [name]       Themes"
+  right_col << ":config [set val]   Config"
+  right_col << ":env [VAR]          Env vars"
   right_col << ""
   right_col << "INTEGRATIONS:".c(@c_prompt).b
   right_col << "r                   Launch rtfm"
@@ -1331,6 +1373,16 @@ def stats(*args) # Show command execution statistics and analytics
     fname = filename || "rsh_stats.csv"
     export_stats_csv(fname)
     return
+  elsif format == "--graph"
+    stats_graph
+    return
+  elsif format == "--clear"
+    # Clear all statistics
+    @cmd_frequency = {}
+    @cmd_stats = {}
+    puts "All statistics cleared"
+    rshrc
+    return
   end
 
   # Display stats (existing code)
@@ -1371,6 +1423,59 @@ def stats(*args) # Show command execution statistics and analytics
 
   # Success/failure tracking
   puts "\n  Last command exit status: #{@last_exit == 0 ? 'Success'.c(@c_path) : "Failed (#{@last_exit})".c(196)}"
+  puts
+end
+def stats_graph # Visual graph mode for stats
+  puts "\n  Command Usage Graph".c(@c_prompt).b
+  puts "  " + "="*50
+
+  return puts "No data to display" if @cmd_frequency.nil? || @cmd_frequency.empty?
+
+  sorted = @cmd_frequency.sort_by { |_, count| -count }.first(15)
+  max_count = sorted.first[1]
+  max_width = 40
+
+  puts
+  sorted.each_with_index do |(cmd, count), i|
+    # Calculate bar width (scaled to max_width)
+    bar_width = (count.to_f / max_count * max_width).round
+    bar = "█" * bar_width
+
+    # Color bars by intensity
+    color = case bar_width
+    when 0..10 then 244    # Gray
+    when 11..20 then 3     # Yellow
+    when 21..30 then 214   # Orange
+    else 196               # Red
+    end
+
+    puts "  #{cmd.ljust(15)} #{count.to_s.rjust(4)}x #{bar.c(color)}"
+  end
+
+  # Performance graph if data exists
+  if @cmd_stats && !@cmd_stats.empty?
+    puts "\n  Command Performance Graph (avg time)".c(@c_prompt).b
+    puts "  " + "="*50
+    puts
+
+    slowest = @cmd_stats.sort_by { |_, s| -(s[:avg_time] || 0) }.first(10)
+    max_time = slowest.first[1][:avg_time]
+
+    slowest.each do |cmd, stats|
+      bar_width = (stats[:avg_time] / max_time * max_width).round
+      bar = "█" * bar_width
+
+      color = case bar_width
+      when 0..10 then 2      # Green (fast)
+      when 11..20 then 214   # Orange
+      else 196               # Red (slow)
+      end
+
+      time_str = "#{'%.3f' % stats[:avg_time]}s"
+      puts "  #{cmd.ljust(15)} #{time_str.rjust(8)} #{bar.c(color)}"
+    end
+  end
+
   puts
 end
 def export_stats(filename) # Export stats to file (JSON or CSV based on extension)
@@ -1744,6 +1849,155 @@ def theme(*args) # Apply color scheme presets
   puts "Theme '#{name}' applied"
   puts "Add this to .rshrc to make it permanent: :theme \"#{name}\""
 end
+def load_plugins # Load all plugins from plugin directory
+  return unless Dir.exist?(@plugin_dir)
+
+  plugin_files = Dir.glob(@plugin_dir + '/*.rb').sort
+
+  plugin_files.each do |plugin_file|
+    plugin_name = File.basename(plugin_file, '.rb')
+
+    # Skip if disabled
+    next if @plugin_disabled.include?(plugin_name)
+
+    begin
+      # Load the plugin file
+      load(plugin_file)
+
+      # Find the plugin class (conventionally PluginNamePlugin)
+      class_name = plugin_name.split('_').map(&:capitalize).join + 'Plugin'
+
+      # Try to instantiate the plugin
+      if Object.const_defined?(class_name)
+        plugin_class = Object.const_get(class_name)
+        rsh_context = {
+          version: @version,
+          history: @history,
+          bookmarks: @bookmarks,
+          nick: @nick,
+          gnick: @gnick,
+          pwd: Dir.pwd,
+          config: method(:config),
+          rsh: self
+        }
+        plugin_instance = plugin_class.new(rsh_context)
+        @plugins << { name: plugin_name, instance: plugin_instance, class: class_name }
+
+        # Load plugin completions
+        if plugin_instance.respond_to?(:add_completions)
+          completions = plugin_instance.add_completions
+          @cmd_completions.merge!(completions) if completions.is_a?(Hash)
+        end
+
+        # Load plugin commands
+        if plugin_instance.respond_to?(:add_commands)
+          commands = plugin_instance.add_commands
+          @plugin_commands.merge!(commands) if commands.is_a?(Hash)
+        end
+
+        puts "  Loaded plugin: #{plugin_name} (#{class_name})" if ENV['RSH_DEBUG']
+      end
+    rescue => e
+      puts "Warning: Failed to load plugin '#{plugin_name}': #{e.message}" if ENV['RSH_DEBUG']
+      puts "  #{e.backtrace.first}" if ENV['RSH_DEBUG']
+    end
+  end
+
+  # Call on_startup for all plugins
+  @plugins.each do |plugin|
+    begin
+      plugin[:instance].on_startup if plugin[:instance].respond_to?(:on_startup)
+    rescue => e
+      puts "Warning: Plugin '#{plugin[:name]}' on_startup failed: #{e.message}" if ENV['RSH_DEBUG']
+    end
+  end
+end
+def call_plugin_hook(hook_name, *args) # Call a lifecycle hook for all plugins
+  results = []
+  @plugins.each do |plugin|
+    begin
+      if plugin[:instance].respond_to?(hook_name)
+        result = plugin[:instance].send(hook_name, *args)
+        results << result unless result.nil?
+      end
+    rescue => e
+      puts "Warning: Plugin '#{plugin[:name]}' hook '#{hook_name}' failed: #{e.message}" if ENV['RSH_DEBUG']
+    end
+  end
+  results
+end
+def plugins(*args) # Plugin management command
+  if args.empty?
+    # List all plugins
+    if @plugins.empty?
+      puts "\nNo plugins loaded"
+      puts "Place .rb files in #{@plugin_dir}"
+      return
+    end
+
+    puts "\n  Loaded Plugins:".c(@c_prompt).b
+    @plugins.each do |plugin|
+      status = @plugin_disabled.include?(plugin[:name]) ? '[disabled]'.c(196) : '[enabled]'.c(@c_path)
+      puts "    #{plugin[:name].ljust(20)} #{status} (#{plugin[:class]})"
+    end
+
+    unless @plugin_disabled.empty?
+      puts "\n  Disabled Plugins:".c(@c_stamp)
+      @plugin_disabled.each { |name| puts "    #{name}" }
+    end
+    puts
+  elsif args[0] == 'reload'
+    # Reload all plugins
+    @plugins = []
+    @plugin_commands = {}
+    load_plugins
+    puts "Plugins reloaded (#{@plugins.length} loaded)"
+  elsif args[0] == 'enable' && args[1]
+    # Enable a plugin
+    plugin_name = args[1]
+    @plugin_disabled.delete(plugin_name)
+    puts "Plugin '#{plugin_name}' enabled. Use :plugins reload to load it"
+    rshrc
+  elsif args[0] == 'disable' && args[1]
+    # Disable a plugin
+    plugin_name = args[1]
+    unless @plugin_disabled.include?(plugin_name)
+      @plugin_disabled << plugin_name
+    end
+    @plugins.reject! { |p| p[:name] == plugin_name }
+    puts "Plugin '#{plugin_name}' disabled"
+    rshrc
+  elsif args[0] == 'info' && args[1]
+    # Show plugin info
+    plugin_name = args[1]
+    plugin = @plugins.find { |p| p[:name] == plugin_name }
+    if plugin
+      puts "\n  Plugin: #{plugin_name}".c(@c_prompt).b
+      puts "    Class: #{plugin[:class]}"
+      puts "    File: #{@plugin_dir}/#{plugin_name}.rb"
+
+      puts "\n  Hooks:".c(@c_nick)
+      %i[on_startup on_command_before on_command_after on_prompt].each do |hook|
+        has_hook = plugin[:instance].respond_to?(hook) ? '✓' : '✗'
+        puts "    #{has_hook} #{hook}"
+      end
+
+      puts "\n  Extensions:".c(@c_nick)
+      puts "    ✓ add_completions" if plugin[:instance].respond_to?(:add_completions)
+      puts "    ✓ add_commands" if plugin[:instance].respond_to?(:add_commands)
+      puts
+    else
+      puts "Plugin '#{plugin_name}' not found"
+    end
+  else
+    puts "Usage:"
+    puts "  :plugins              List all plugins"
+    puts "  :plugins reload       Reload all plugins"
+    puts "  :plugins enable NAME  Enable a plugin"
+    puts "  :plugins disable NAME Disable a plugin"
+    puts "  :plugins info NAME    Show plugin details"
+  end
+end
 def validate_command(cmd) # Syntax validation before execution
   return nil if cmd.nil? || cmd.empty?
   warnings = []
@@ -1759,18 +2013,74 @@ def validate_command(cmd) # Syntax validation before execution
   warnings << "WARNING: Force flag without path" if cmd =~ /rm\s+-[rf]+\s*$/
   warnings << "WARNING: Sudo with redirection" if cmd =~ /sudo.*>/
 
-  # Check for common typos in popular commands
-  if cmd =~ /^(\w+)/
+  # Check for common typos in popular commands (skip for : commands)
+  if cmd =~ /^(\w+)/ && cmd !~ /^:/
     first_cmd = $1
-    unless @exe.include?(first_cmd) || @nick.include?(first_cmd) || first_cmd == "cd"
+    # Check if command exists (don't warn for valid commands)
+    is_valid_cmd = @exe.include?(first_cmd) ||
+                   @nick.include?(first_cmd) ||
+                   first_cmd == "cd" ||
+                   (@plugin_commands && @plugin_commands[first_cmd]) ||
+                   (@defuns && @defuns.keys.include?(first_cmd))
+
+    unless is_valid_cmd
       suggestions = suggest_command(first_cmd)
       if suggestions && !suggestions.empty?
-        warnings << "Command '#{first_cmd}' not found. Did you mean: #{suggestions.join(', ')}?"
+        # Auto-correct if enabled and first suggestion has distance ≤ 2
+        if @auto_correct && levenshtein_distance(first_cmd, suggestions[0]) <= 2
+          warnings << "AUTO-CORRECTING: '#{first_cmd}' → '#{suggestions[0]}'"
+        else
+          warnings << "Command '#{first_cmd}' not found. Did you mean: #{suggestions.join(', ')}?"
+        end
       end
     end
   end
 
   warnings.empty? ? nil : warnings
+end
+def calc(*args) # Inline calculator using Ruby's Math library
+  if args.empty?
+    puts "Usage: calc <expression>"
+    puts "Examples:"
+    puts "  calc 2 + 2"
+    puts "  calc \"Math.sqrt(16)\""
+    puts "  calc \"Math::PI * 2\""
+    return
+  end
+
+  expression = args.join(' ')
+
+  begin
+    # Safe evaluation with Math library
+    result = eval(expression, binding, __FILE__, __LINE__)
+    puts result
+  rescue SyntaxError => e
+    puts "Syntax error in expression: #{e.message}"
+  rescue => e
+    puts "Error evaluating expression: #{e.message}"
+  end
+end
+def apply_auto_correct(cmd) # Apply auto-correction to command
+  return cmd unless @auto_correct
+  return cmd if cmd =~ /^:/  # Don't auto-correct colon commands
+  return cmd unless cmd =~ /^(\w+)/
+
+  first_cmd = $1
+
+  # Don't auto-correct if command exists
+  return cmd if @exe.include?(first_cmd)
+  return cmd if @nick.include?(first_cmd)
+  return cmd if first_cmd == "cd"
+  return cmd if @plugin_commands && @plugin_commands[first_cmd]
+  return cmd if @defuns && @defuns.keys.include?(first_cmd)  # Check user defuns
+
+  suggestions = suggest_command(first_cmd)
+  if suggestions && !suggestions.empty? && levenshtein_distance(first_cmd, suggestions[0]) <= 2
+    # Auto-correct using first (closest) suggestion
+    cmd.sub(/^#{first_cmd}/, suggestions[0])
+  else
+    cmd
+  end
 end
 def execute_conditional(cmd_line)
   # Split on && and || while preserving the operators
@@ -2055,6 +2365,11 @@ def load_rshrc_safe
     @defuns = {} unless @defuns.is_a?(Hash)
     @history_dedup = 'smart' unless @history_dedup.is_a?(String)
     @session_autosave = 0 unless @session_autosave.is_a?(Integer)
+    @auto_correct = false unless [@auto_correct].any? { |v| v == true || v == false }
+    @slow_command_threshold = 0 unless @slow_command_threshold.is_a?(Integer)
+    @plugin_disabled = [] unless @plugin_disabled.is_a?(Array)
+    @plugins = [] unless @plugins.is_a?(Array)
+    @plugin_commands = {} unless @plugin_commands.is_a?(Hash)
 
     # Restore defuns from .rshrc
     if @defuns && !@defuns.empty?
@@ -2191,6 +2506,11 @@ def load_defaults
   @switch_cache_time ||= {}
   @history_dedup ||= 'smart'
   @session_autosave ||= 0
+  @auto_correct ||= false
+  @slow_command_threshold ||= 0
+  @plugin_disabled ||= []
+  @plugins ||= []
+  @plugin_commands ||= {}
   puts "Loaded with default configuration."
 end
 
@@ -2264,6 +2584,7 @@ begin # Load .rshrc and populate @history
   @c.restore                # Max row & col gotten, cursor restored
   hist_clean                # Remove duplicates, etc
   @path.map! {|p| p + "/*"} # Set proper format for path search
+  @plugins_loaded = false   # Defer plugin loading until first command
 end
 
 # MAIN PART
@@ -2273,9 +2594,17 @@ loop do
     @node = Etc.uname[:nodename]            # For use in @prompt
     h = @history; f = @cmd_frequency; s = @cmd_stats; b = @bookmarks; d = @defuns; load_rshrc_safe; @history = h; @cmd_frequency = f; @cmd_stats = s; @bookmarks = b; @defuns = d # reload prompt but preserve runtime data
     @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
-    system("printf \"\033]0;rsh: #{Dir.pwd}\007\"")   # Set Window title to path 
+    system("printf \"\033]0;rsh: #{Dir.pwd}\007\"")   # Set Window title to path
     @history[0] = "" unless @history[0]
     cache_executables  # Use cached executable lookup
+    # Load plugins on first command (lazy loading)
+    unless @plugins_loaded
+      load_plugins
+      @plugins_loaded = true
+    end
+    # Append plugin prompt additions (after plugins loaded)
+    plugin_prompts = call_plugin_hook(:on_prompt)
+    @prompt += plugin_prompts.join if plugin_prompts.any?
     # Auto-save session if enabled and interval elapsed
     if @session_autosave && @session_autosave > 0
       current_time = Time.now.to_i
@@ -2290,8 +2619,33 @@ loop do
     @dirs.pop
     hist_clean # Clean up the history
     @cmd = "ls" if @cmd == "" # Default to ls when no command is given
-    if @cmd.match(/^!\d+/)
-      hi = @history[@cmd.sub(/^!(\d+)$/, '\1').to_i+1] 
+    # Enhanced history commands
+    if @cmd == '!!'
+      # Repeat last command
+      @cmd = @history[1] if @history.length > 1
+    elsif @cmd =~ /^!-(\d+)$/
+      # Repeat nth to last (e.g., !-2 = 2nd to last)
+      index = $1.to_i
+      @cmd = @history[index] if @history.length > index
+    elsif @cmd =~ /^!(\d+):(\d+)$/
+      # Chain commands (e.g., !5:7 = commands 5, 6, 7)
+      start_idx = $1.to_i + 1
+      end_idx = $2.to_i + 1
+      if start_idx < @history.length && end_idx < @history.length && start_idx <= end_idx
+        commands = @history[start_idx..end_idx].compact.reverse
+        # Filter out colon commands (they don't work in shell chains)
+        commands.reject! { |c| c =~ /^:/ }
+        if commands.empty?
+          puts "Cannot chain colon commands (use shell commands only)"
+          @cmd = "ls"  # Default to ls
+        else
+          @cmd = commands.join(' && ')
+          puts " Chaining: #{@cmd}".c(@c_stamp)
+        end
+      end
+    elsif @cmd.match(/^!\d+$/)
+      # Original: !5 = command 5
+      hi = @history[@cmd.sub(/^!(\d+)$/, '\1').to_i+1]
       @cmd = hi if hi
     end
     # Move cursor to end of line and print the full command before clearing
@@ -2341,18 +2695,27 @@ loop do
     elsif @cmd == '#' # List previous directories
       dirs
     else # Execute command
-      # Check if it's a user-defined Ruby function FIRST (before any expansions)
+      # Check if it's a plugin command FIRST
       cmd_parts = @cmd.split(/\s+/)
-      func_name = cmd_parts[0]
-      if self.respond_to?(func_name) && singleton_class.instance_methods(false).include?(func_name.to_sym)
+      cmd_name = cmd_parts[0]
+      if @plugin_commands && @plugin_commands[cmd_name]
         begin
           args = cmd_parts[1..]
-          puts "DEBUG: Calling #{func_name} with args: #{args}" if ENV['RSH_DEBUG']
-          result = self.send(func_name, *args)
+          result = @plugin_commands[cmd_name].call(*args)
+          puts result unless result.nil?
+        rescue => e
+          puts "Error in plugin command '#{cmd_name}': #{e}"
+        end
+      # Then check if it's a user-defined Ruby function (before any expansions)
+      elsif self.respond_to?(cmd_name) && singleton_class.instance_methods(false).include?(cmd_name.to_sym)
+        begin
+          args = cmd_parts[1..]
+          puts "DEBUG: Calling #{cmd_name} with args: #{args}" if ENV['RSH_DEBUG']
+          result = self.send(cmd_name, *args)
           puts "DEBUG: Result: #{result.inspect}" if ENV['RSH_DEBUG']
           puts result unless result.nil?
         rescue => e
-          puts "Error calling function '#{func_name}': #{e}"
+          puts "Error calling function '#{cmd_name}': #{e}"
         end
       else
         # Handle conditional execution (&& and ||)
@@ -2414,10 +2777,27 @@ loop do
             end
           else
             begin
-              # Validate command before execution
+              pre_cmd
+
+              # Apply auto-correct if enabled (before validation)
+              @cmd = apply_auto_correct(@cmd)
+
+              # Validate command after auto-correction
               warnings = validate_command(@cmd)
               if warnings && !warnings.empty?
-                warnings.each { |w| puts "#{w}".c(196) }
+                # Show non-auto-correct warnings
+                warnings.reject { |w| w.start_with?("AUTO-CORRECTING:") }.each { |w| puts "#{w}".c(196) }
+                # Show auto-correct and ask for confirmation
+                auto_correct_warnings = warnings.select { |w| w.start_with?("AUTO-CORRECTING:") }
+                if auto_correct_warnings.any?
+                  auto_correct_warnings.each { |w| puts "#{w}".c(214) }
+                  print "Accept auto-correction? (Y/n): "
+                  response = $stdin.gets.chomp
+                  if response.downcase == 'n'
+                    puts "Auto-correction cancelled"
+                    next
+                  end
+                end
                 # For critical warnings, ask for confirmation
                 if warnings.any? { |w| w.start_with?("WARNING:") }
                   print "Continue anyway? (y/N): "
@@ -2429,7 +2809,16 @@ loop do
                 end
               end
 
-              pre_cmd
+              # Call plugin on_command_before hooks
+              plugin_results = call_plugin_hook(:on_command_before, @cmd)
+              # If any plugin returns false, skip command
+              if plugin_results.include?(false)
+                puts "Command blocked by plugin"
+                next
+              end
+              # If any plugin returns a modified command, use it
+              modified_cmd = plugin_results.find { |r| r.is_a?(String) }
+              @cmd = modified_cmd if modified_cmd
 
               # Track command frequency for intelligent completion
               cmd_base = @cmd.split.first if @cmd && !@cmd.empty?
@@ -2469,6 +2858,14 @@ loop do
                 @cmd_stats[cmd_base][:total_time] += elapsed
                 @cmd_stats[cmd_base][:avg_time] = @cmd_stats[cmd_base][:total_time] / @cmd_stats[cmd_base][:count]
               end
+
+              # Slow command alert
+              if @slow_command_threshold > 0 && elapsed > @slow_command_threshold
+                puts "⚠ Command took #{'%.1f' % elapsed}s (threshold: #{@slow_command_threshold}s)".c(214)
+              end
+
+              # Call plugin on_command_after hooks
+              call_plugin_hook(:on_command_after, @cmd, @last_exit)
 
               post_cmd
             rescue StandardError => err
