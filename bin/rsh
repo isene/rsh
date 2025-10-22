@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.12.0" # Extensible command completion system for git, apt, docker, systemctl, cargo, npm, gem, bundle
+@version    = "3.0.0" # Major release: Persistent defuns, switch caching, smart suggestions, analytics, tooltips, bookmarks, validation, sessions
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -92,6 +92,7 @@ begin # Initialization
   @c_gnick     = 14                       # Color for matching gnick
   @c_path      = 3                        # Color for valid path
   @c_switch    = 6                        # Color for switches/options
+  @c_bookmark  = 13                       # Color for bookmarks
   @c_tabselect = 5                        # Color for selected tabcompleted item
   @c_taboption = 244                      # Color for unselected tabcompleted item
   @c_stamp     = 244                      # Color for time stamp/command
@@ -131,6 +132,13 @@ begin # Initialization
     "gem" => %w[install uninstall update list search build push],
     "bundle" => %w[install update exec check config]
   }
+  # New v3.0 features initialization
+  @switch_cache = {}                      # Cache for command switches from --help
+  @switch_cache_time = {}                 # Timestamp for cache expiry
+  @bookmarks = {}                         # Enhanced bookmarks with tags
+  @defuns = {}                            # Store defun definitions for persistence
+  @cmd_stats = {}                         # Command execution statistics
+  @session_file = Dir.home + '/.rsh_session' # Session save file
   def pre_cmd; end                        # User-defined function to be run BEFORE command execution
   def post_cmd; end                       # User-defined function to be run AFTER  command execution
 end
@@ -138,32 +146,37 @@ end
 # HELP TEXT
 @info = <<~INFO
 
-  Hello #{@user}, welcome to rsh - the Ruby SHell. 
-  
-  rsh does not attempt to compete with the grand old shells like bash and zsh. 
-  It serves the specific needs and wants of its author. If you like it, then feel free 
+  Hello #{@user}, welcome to rsh v3.0 - the Ruby SHell.
+
+  rsh does not attempt to compete with the grand old shells like bash and zsh.
+  It serves the specific needs and wants of its author. If you like it, then feel free
   to ask for more or different features here: https://github.com/isene/rsh.
-  
-  Features:
+
+  Core Features:
   * Aliases (called nicks in rsh) - both for commands and general nicks
-  * Syntax highlighting, matching nicks, system commands and valid dirs/files
+  * Syntax highlighting for nicks, bookmarks, commands, switches and valid dirs/files
   * Tab completions for nicks, system commands, command switches and dirs/files
   * Smart context-aware tab completion for git, apt, docker, systemctl, cargo, npm, gem, bundle
-  * Tab completion presents matches in a list to pick from
-  * When you start to write a command, rsh will suggest the first match in the history and
-    present that in "toned down" letters - press the arrow right key to accept the suggestion
-  * Writing a partial command and pressing `UP` will search history for matches.
-    Go down/up in the list and press `TAB` or `ENTER` to accept, `Ctrl-g` or `Ctrl-c` to discard
-  * History with editing, search and repeat a history command (with `!`)
-  * Config file (.rshrc) updates on exit (with Ctrl-d) or not (with Ctrl-e)
-  * Set of simple rsh specific commands like nick, nick?, history and rmhistory
-  * rsh specific commands and full set of Ruby commands available via :<command>
-  * All colors are themeable in .rshrc (see github link for possibilities)
-  * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
-  * AI integration: Use @ for text responses and @@ for command suggestions (requires ollama or OpenAI)
-  
-  Use `:help` for command reference.
-  
+  * History with editing, search and repeat (use `!` or UP arrow)
+  * Auto-suggestions from history (press RIGHT arrow to accept)
+  * Ruby functions callable as shell commands (persistent across sessions)
+  * AI integration: Use @ for text responses and @@ for command suggestions
+
+  NEW in v3.0:
+  * Command analytics - :stats shows usage patterns and performance metrics
+  * Enhanced bookmarks with tags - :bm "name path #tag1,tag2" then just type name to jump
+  * Session management - :save_session and :load_session preserve your entire shell state
+  * Smart typo detection - "Did you mean...?" suggestions for misspelled commands
+  * Switch caching - Faster TAB completion for command options
+  * Option value completion - TAB complete values like --format=json
+  * Syntax validation - Pre-execution warnings for dangerous or malformed commands
+  * Unified command syntax - :nick, :gnick, :bm all work the same way (list/create/delete)
+
+  Config file (.rshrc) updates on exit (Ctrl-d) or not (Ctrl-e).
+  All colors are themeable in .rshrc (see github link for possibilities).
+
+  Use `:help` for complete command reference.
+
 INFO
 
 @help = <<~HELP
@@ -192,6 +205,7 @@ def firstrun
   @c_gnick     = 87   # Color for matching gnick
   @c_path      = 208  # Color for valid path
   @c_switch    = 148  # Color for switches/options
+  @c_bookmark  = 13   # Color for bookmarks
   @c_tabselect = 207  # Color for selected tabcompleted item
   @c_taboption = 244  # Color for unselected tabcompleted item
   @c_stamp     = 244  # Color for time stamp/command
@@ -468,7 +482,8 @@ def tab(type)
     @tabstr   = @pretab if type == "hist"         # Searching for matches with whole string in history
     @pretab   = @pretab.delete_suffix(@tabstr)
   end
-  type = "switch" if @tabstr && @tabstr[0] == "-"
+  type = "switch" if @tabstr && @tabstr[0] == "-" && !@tabstr.include?("=")
+  type = "option_value" if @tabstr && @tabstr =~ /^--?[\w-]+=/
   type = "env_vars" if @tabstr && @tabstr[0] == "$"
 
   # Debug output when RSH_DEBUG is set
@@ -517,12 +532,29 @@ def tab(type)
       @tabarray.shift   # Take away @history[0]
       return if @tabarray.empty?
     when "switch"
-      cmdswitch = @pretab.split(/[|, ]/).last.to_s
-      hlp = `#{cmdswitch} --help 2>/dev/null`
-      hlp = hlp.split("\n").grep(/^\s*-{1,2}[^-]/)
-      hlp = hlp.map{|h| h.sub(/^\s*/, '').sub(/^--/, '    --')}
-      hlp = hlp.reject{|h| /-</ =~ h}
-      @tabarray = hlp
+      cmdswitch = @pretab.split(/[|, ]/).last.to_s.strip
+      @tabarray = get_command_switches(cmdswitch)
+    when "option_value"  # Completion for option values like --format=<value>
+      if @tabstr =~ /^--?[\w-]+=(.*)/
+        value_prefix = $1
+        option = @tabstr.sub(/=.*/, '')
+        # Define common option value completions
+        value_completions = {
+          /format/ => %w[json yaml xml csv plain],
+          /output/ => %w[json yaml xml text html],
+          /level|log-level/ => %w[debug info warn error fatal],
+          /color/ => %w[auto always never],
+          /type/ => %w[file dir link all]
+        }
+        matches = []
+        value_completions.each do |pattern, values|
+          if option =~ pattern
+            matches = values.select { |v| v.start_with?(value_prefix) }
+            break unless matches.empty?
+          end
+        end
+        @tabarray = matches.map { |v| "#{option}=#{v}" }
+      end
     when "dirs_only"    # Only show directories
       fdir = @tabstr + "*"
       dirs = Dir.glob(fdir).select { |d| Dir.exist?(d) }.map { |d| d + "/" }
@@ -717,6 +749,85 @@ def tabend
   @c_col = @pos0 + @pos
   @c.col(@c_col)
 end
+def get_command_switches(command) # Helper function to extract switches from --help
+  # Check cache first (cache expires after 1 hour)
+  cache_key = command.to_s.strip
+  return [] if cache_key.empty?
+
+  current_time = Time.now.to_i
+  if @switch_cache[cache_key] && @switch_cache_time[cache_key] && (current_time - @switch_cache_time[cache_key]) < 3600
+    return @switch_cache[cache_key]
+  end
+
+  # Parse --help output
+  hlp = `#{command} --help 2>/dev/null`
+  # Try -h if --help didn't work
+  hlp = `#{command} -h 2>/dev/null` if hlp.empty?
+  return [] if hlp.empty?
+
+  switches = []
+
+  # Method 1: Lines starting with switches (traditional format)
+  switches = hlp.split("\n").grep(/^\s*-{1,2}[^-]/)
+  switches.map! { |h| h.sub(/^\s*/, '').sub(/^--/, '    --') }
+  switches.reject! { |h| /-</ =~ h }
+
+  # Method 2: Extract switches from usage line (git-style format)
+  if switches.empty?
+    usage_lines = hlp.split("\n").select { |l| l =~ /usage:|Usage:/ }
+    usage_lines.each do |line|
+      # Extract all switches from the usage line
+      line.scan(/(-[a-zA-Z]|--[a-z-]+)/).each do |match|
+        switch = match[0]
+        switches << (switch.start_with?('--') ? "    #{switch}" : switch)
+      end
+    end
+    switches.uniq!
+  end
+
+  # Cache the result (even if empty, to avoid repeated failures)
+  @switch_cache[cache_key] = switches
+  @switch_cache_time[cache_key] = current_time
+
+  switches
+end
+def levenshtein_distance(s, t) # Calculate edit distance for smart suggestions
+  m = s.length
+  n = t.length
+  return m if n == 0
+  return n if m == 0
+  d = Array.new(m+1) {Array.new(n+1)}
+  (0..m).each {|i| d[i][0] = i}
+  (0..n).each {|j| d[0][j] = j}
+  (1..n).each do |j|
+    (1..m).each do |i|
+      d[i][j] = if s[i-1] == t[j-1]
+        d[i-1][j-1]
+      else
+        [d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+1].min
+      end
+    end
+  end
+  d[m][n]
+end
+def suggest_command(cmd) # Smart command suggestions for typos
+  return nil if cmd.nil? || cmd.empty?
+  return nil if @exe.include?(cmd) || @nick.include?(cmd)
+
+  # Find commands with small edit distance
+  candidates = (@exe + @nick.keys).select do |c|
+    next false if c.length < 2
+    dist = levenshtein_distance(cmd, c)
+    max_dist = [cmd.length / 3, 2].max
+    dist <= max_dist && dist > 0
+  end
+
+  return nil if candidates.empty?
+
+  # Sort by distance
+  candidates.sort_by! { |c| levenshtein_distance(cmd, c) }
+  candidates.first(3)
+end
 def hist_clean # Clean up @history
   @history.uniq!
   @history.compact!
@@ -734,6 +845,7 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
 
   str.gsub(/(?:\S'[^']*'|[^ '])+/) do |el|
     clean_el = el.gsub("'", "")
+    # Priority: commands > nicks > bookmarks > paths
     if @exe.include?(el)
       el.c(@c_cmd)
     elsif el == "cd"
@@ -741,8 +853,6 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
     elsif clean_el =~ /^\.\/(.+)/ && File.exist?(clean_el) && File.executable?(clean_el)
       # Color local executables starting with ./
       el.c(@c_cmd)
-    elsif File.exist?(clean_el)
-      el.c(@c_path)
     elsif @nick.include?(el)
       el.c(@c_nick)
     elsif el == "r" or el == "f"
@@ -751,6 +861,11 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
       el.c(@c_gnick)
     elsif self.respond_to?(el) && singleton_class.instance_methods(false).include?(el.to_sym)
       el.c(@c_nick).b  # Ruby functions in bold nick color
+    elsif @bookmarks && @bookmarks.include?(el)
+      # Color bookmarks (after commands and nicks)
+      el.c(@c_bookmark)
+    elsif File.exist?(clean_el)
+      el.c(@c_path)
     elsif el[0] == "-"
       el.c(@c_switch)
     else
@@ -771,6 +886,12 @@ def rshrc # Write updates to .rshrc
   conf += "@gnick = #{@gnick}\n"
   conf.sub!(/^@cmd_frequency.*(\n|$)/, "")
   conf += "@cmd_frequency = #{@cmd_frequency}\n"
+  conf.sub!(/^@cmd_stats.*(\n|$)/, "")
+  conf += "@cmd_stats = #{@cmd_stats}\n" unless @cmd_stats.empty?
+  conf.sub!(/^@bookmarks.*(\n|$)/, "")
+  conf += "@bookmarks = #{@bookmarks}\n" unless @bookmarks.empty?
+  conf.sub!(/^@defuns.*(\n|$)/, "")
+  conf += "@defuns = #{@defuns}\n" unless @defuns.empty?
   # Only write @cmd_completions if user has customized it
   unless conf =~ /^@cmd_completions\s*=/
     # Don't write default completions to avoid cluttering .rshrc
@@ -820,9 +941,10 @@ def help
   left_col << "SPECIAL COMMANDS:".c(@c_prompt).b
   left_col << ":nick 'll = ls -l'  Command alias"
   left_col << ":gnick 'h = /home'  General alias"
-  left_col << ":nickdel 'name'     Delete nick"
-  left_col << ":gnickdel 'name'    Delete gnick"
-  left_col << ":nick?              List all nicks"
+  left_col << ":nick               List nicks"
+  left_col << ":gnick              List gnicks"
+  left_col << ":nick '-name'       Delete nick"
+  left_col << ":gnick '-name'      Delete gnick"
   left_col << ":history            Show history"
   left_col << ":rmhistory          Clear history"
   left_col << ":info               About rsh"
@@ -842,6 +964,16 @@ def help
   right_col << ":fg [id]            Foreground job"
   right_col << ":bg [id]            Resume in bg"
   right_col << ""
+  right_col << "v3.0 NEW FEATURES:".c(@c_prompt).b
+  right_col << ":stats              Command analytics"
+  right_col << ":bm \"name\"          Create bookmark"
+  right_col << "name                Jump to bookmark"
+  right_col << ":bm                 List bookmarks"
+  right_col << ":bm \"-name\"         Delete bookmark"
+  right_col << ":bm \"?tag\"          Search by tag"
+  right_col << ":save_session       Save session"
+  right_col << ":load_session       Restore session"
+  right_col << ""
   right_col << "INTEGRATIONS:".c(@c_prompt).b
   right_col << "r                   Launch rtfm"
   right_col << "f                   Launch fzf"
@@ -855,8 +987,8 @@ def help
   right_col << "SMART COMPLETIONS:".c(@c_prompt).b
   right_col << "git <TAB>           Git subcommands"
   right_col << "apt/docker <TAB>    Command options"
-  right_col << "Supports: git, apt, docker,"
-  right_col << "systemctl, cargo, npm, gem"
+  right_col << "--format=<TAB>      Option values"
+  right_col << "Typo suggestions    Auto-correct"
   right_col << ""
   right_col << "EXPANSIONS:".c(@c_prompt).b
   right_col << "~                   Home directory"
@@ -899,43 +1031,47 @@ def rmhistory # Delete history
   @history = []
   puts "History deleted."
 end
-def nick(nick_str)  # Define a new nick like this: `:nick "ls = ls --color"`
-  if nick_str.match(/^\s*-/)
+def nick(nick_str = nil)  # Define a new nick like this: `:nick "ls = ls --color"`
+  if nick_str.nil? || nick_str.empty?
+    # List all nicks
+    puts "\n  Command nicks:".c(@c_nick).b
+    if @nick.empty?
+      puts "  (none defined)"
+    else
+      @nick.sort.each {|key, value| puts "  #{key.c(@c_nick)} = #{value}"}
+    end
+    puts
+  elsif nick_str.match(/^\s*-/)
     source = nick_str.sub(/^\s*-/, '')
     @nick.delete(source)
+    rshrc
   else
     source = nick_str.sub(/ =.*/, '')
     target = nick_str.sub(/.*= /, '')
     @nick[source] = target
+    rshrc
   end
-  rshrc
 end
-def gnick(nick_str) # Define a generic/global nick to match not only commands (format like nick)
-  if nick_str.match(/^\s*-/)
+def gnick(nick_str = nil) # Define a generic/global nick to match not only commands (format like nick)
+  if nick_str.nil? || nick_str.empty?
+    # List all gnicks
+    puts "\n  General nicks:".c(@c_gnick).b
+    if @gnick.empty?
+      puts "  (none defined)"
+    else
+      @gnick.sort.each {|key, value| puts "  #{key.c(@c_gnick)} = #{value}"}
+    end
+    puts
+  elsif nick_str.match(/^\s*-/)
     source = nick_str.sub(/^\s*-/, '')
     @gnick.delete(source)
+    rshrc
   else
     source = nick_str.sub(/ =.*/, '')
     target = nick_str.sub(/.*= /, '')
     @gnick[source] = target
+    rshrc
   end
-  rshrc
-end
-def nick? # Show nicks
-  puts "  Command nicks:".c(@c_nick)
-  @nick.sort.each {|key, value| puts "  #{key} = #{value}"}
-  puts "  General nicks:".c(@c_gnick)
-  @gnick.sort.each {|key, value| puts "  #{key} = #{value}"}
-end
-def nickdel(nick_name) # Delete a command nick
-  @nick.delete(nick_name)
-  rshrc
-  puts "Nick '#{nick_name}' deleted"
-end
-def gnickdel(nick_name) # Delete a general/global nick
-  @gnick.delete(nick_name)
-  rshrc
-  puts "General nick '#{nick_name}' deleted"
 end
 def dirs
   puts "Past direactories:"
@@ -994,6 +1130,7 @@ def defun(func_def)  # Define a Ruby function like: `:defun "myls(*args) = Dir.g
     func_name = func_def.sub(/^\s*-/, '')
     if self.respond_to?(func_name)
       singleton_class.remove_method(func_name.to_sym)
+      @defuns.delete(func_name)
       puts "Function '#{func_name}' removed"
     else
       puts "Function '#{func_name}' not found"
@@ -1005,11 +1142,12 @@ def defun(func_def)  # Define a Ruby function like: `:defun "myls(*args) = Dir.g
       func_name = $1
       func_params = $2
       func_body = $3
-      
+
       begin
         eval_code = "def #{func_name}(#{func_params}); #{func_body}; end"
         puts "  DEBUG: Evaluating: #{eval_code}" if ENV['RSH_DEBUG']
         singleton_class.class_eval(eval_code)
+        @defuns[func_name] = func_def  # Store for persistence
         puts "Function '#{func_name}' defined"
         puts "  DEBUG: Method created? #{respond_to?(func_name)}" if ENV['RSH_DEBUG']
       rescue SyntaxError => e
@@ -1037,6 +1175,202 @@ def defun?  # Show all user-defined functions
       puts "  #{method}"
     end
   end
+end
+def stats # Show command execution statistics and analytics
+  puts "\n  Command Execution Statistics".c(@c_prompt).b
+  puts "  " + "="*50
+
+  # Most used commands
+  if @cmd_frequency && !@cmd_frequency.empty?
+    puts "\n  Top 10 Most Used Commands:".c(@c_nick)
+    sorted = @cmd_frequency.sort_by { |_, count| -count }.first(10)
+    sorted.each_with_index do |(cmd, count), i|
+      bar = "■" * ([count / 5, 20].min)
+      puts "  #{(i+1).to_s.rjust(2)}. #{cmd.ljust(20)} #{count.to_s.rjust(5)}x #{bar.c(@c_path)}"
+    end
+  end
+
+  # Command statistics from @cmd_stats
+  if @cmd_stats && !@cmd_stats.empty?
+    total_time = @cmd_stats.values.map { |s| s[:total_time] || 0 }.sum
+    total_cmds = @cmd_stats.values.map { |s| s[:count] || 0 }.sum
+
+    puts "\n  Performance Statistics:".c(@c_nick)
+    puts "  Total commands executed: #{total_cmds}"
+    puts "  Total execution time: #{'%.2f' % total_time}s"
+    puts "  Average time per command: #{'%.2f' % (total_time / total_cmds)}s" if total_cmds > 0
+
+    puts "\n  Slowest Commands:".c(@c_nick)
+    slowest = @cmd_stats.sort_by { |_, s| -(s[:avg_time] || 0) }.first(5)
+    slowest.each_with_index do |(cmd, stats), i|
+      puts "  #{(i+1).to_s.rjust(2)}. #{cmd.ljust(20)} avg: #{'%.3f' % (stats[:avg_time] || 0)}s"
+    end
+  end
+
+  # History statistics
+  puts "\n  History Statistics:".c(@c_nick)
+  puts "  Total history entries: #{@history.length}"
+  puts "  Unique commands: #{@history.uniq.length}"
+
+  # Success/failure tracking
+  puts "\n  Last command exit status: #{@last_exit == 0 ? 'Success'.c(@c_path) : "Failed (#{@last_exit})".c(196)}"
+  puts
+end
+def bm(args = nil) # Enhanced bookmark management with tags
+  if args.nil? || args.empty?
+    # List all bookmarks
+    if @bookmarks.empty?
+      puts "No bookmarks defined. Use :bookmark <name> to bookmark current directory"
+      return
+    end
+    puts "\n  Bookmarks:".c(@c_prompt).b
+    @bookmarks.each do |name, data|
+      path = data.is_a?(Hash) ? data[:path] : data
+      tags = data.is_a?(Hash) && data[:tags] ? " [#{data[:tags].join(', ')}]" : ""
+      puts "  #{name.c(@c_nick)} → #{path}#{tags.c(@c_stamp)}"
+    end
+    puts
+  elsif args =~ /^(\w+)\s+(.+)$/
+    # Set bookmark with optional tags
+    name, rest = $1, $2
+    if rest.include?('#')
+      path_part, tag_part = rest.split('#', 2)
+      path = path_part.strip
+      path = Dir.pwd if path.empty?
+      tags = tag_part.split(',').map(&:strip)
+      @bookmarks[name] = {path: path, tags: tags}
+    else
+      @bookmarks[name] = {path: rest.strip, tags: []}
+    end
+    puts "Bookmark '#{name}' set to #{@bookmarks[name][:path]}"
+    rshrc
+  elsif args =~ /^-(\w+)$/
+    # Delete bookmark
+    name = $1
+    if @bookmarks.delete(name)
+      puts "Bookmark '#{name}' deleted"
+      rshrc
+    else
+      puts "Bookmark '#{name}' not found"
+    end
+  elsif args =~ /^\?(\w*)$/
+    # Search bookmarks by tag
+    tag = $1
+    if tag.empty?
+      puts "Available tags:"
+      all_tags = @bookmarks.values.flat_map { |d| d.is_a?(Hash) ? d[:tags] : [] }.uniq.sort
+      puts "  " + all_tags.join(", ")
+    else
+      matches = @bookmarks.select do |_, data|
+        data.is_a?(Hash) && data[:tags] && data[:tags].include?(tag)
+      end
+      if matches.empty?
+        puts "No bookmarks with tag '#{tag}'"
+      else
+        puts "Bookmarks with tag '#{tag}':"
+        matches.each { |name, data| puts "  #{name} → #{data[:path]}" }
+      end
+    end
+  else
+    # Bookmark current directory
+    name = args.strip
+    @bookmarks[name] = {path: Dir.pwd, tags: []}
+    puts "Bookmark '#{name}' set to #{Dir.pwd}"
+    rshrc
+  end
+end
+def bookmark(args = nil) # Alias for bm
+  bm(args)
+end
+def save_session # Save current session state
+  session = {
+    pwd: Dir.pwd,
+    history: @history.first(50),
+    bookmarks: @bookmarks,
+    defuns: @defuns,
+    timestamp: Time.now.to_i
+  }
+  begin
+    require 'json'
+    File.write(@session_file, JSON.pretty_generate(session))
+    puts "Session saved to #{@session_file}"
+  rescue => e
+    puts "Error saving session: #{e.message}"
+  end
+end
+def load_session # Restore previous session
+  unless File.exist?(@session_file)
+    puts "No saved session found"
+    return
+  end
+  begin
+    require 'json'
+    session = JSON.parse(File.read(@session_file), symbolize_names: true)
+
+    # Restore state
+    Dir.chdir(session[:pwd]) if session[:pwd] && Dir.exist?(session[:pwd])
+
+    # Merge history (prepend saved history)
+    if session[:history]
+      @history = (session[:history] + @history).uniq.first(@histsize)
+    end
+
+    # Restore bookmarks
+    if session[:bookmarks]
+      session[:bookmarks].each do |name, data|
+        bookmark_data = data.is_a?(Hash) ? data.transform_keys(&:to_sym) : data
+        @bookmarks[name.to_s] = bookmark_data
+      end
+    end
+
+    # Restore defuns
+    if session[:defuns]
+      session[:defuns].each do |name, func_def|
+        next unless func_def.is_a?(String)
+        @defuns[name.to_s] = func_def
+        # Re-evaluate the function
+        if func_def =~ /^(\w+)\s*\(([^)]*)\)\s*=\s*(.+)$/
+          func_name, func_params, func_body = $1, $2, $3
+          eval_code = "def #{func_name}(#{func_params}); #{func_body}; end"
+          singleton_class.class_eval(eval_code) rescue nil
+        end
+      end
+    end
+
+    saved_time = Time.at(session[:timestamp] || 0).strftime("%Y-%m-%d %H:%M:%S")
+    puts "Session restored from #{saved_time}"
+    rshrc
+  rescue => e
+    puts "Error loading session: #{e.message}"
+  end
+end
+def validate_command(cmd) # Syntax validation before execution
+  return nil if cmd.nil? || cmd.empty?
+  warnings = []
+
+  # Check for common mistakes
+  warnings << "Unmatched quotes" if cmd.count("'").odd? || cmd.count('"').odd?
+  warnings << "Unmatched parentheses" if cmd.count("(") != cmd.count(")")
+  warnings << "Unmatched brackets" if cmd.count("[") != cmd.count("]")
+  warnings << "Unmatched braces" if cmd.count("{") != cmd.count("}")
+
+  # Check for potentially dangerous patterns
+  warnings << "WARNING: Recursive rm detected" if cmd =~ /rm\s+.*-r.*\//
+  warnings << "WARNING: Force flag without path" if cmd =~ /rm\s+-[rf]+\s*$/
+  warnings << "WARNING: Sudo with redirection" if cmd =~ /sudo.*>/
+
+  # Check for common typos in popular commands
+  if cmd =~ /^(\w+)/
+    first_cmd = $1
+    unless @exe.include?(first_cmd) || @nick.include?(first_cmd) || first_cmd == "cd"
+      suggestions = suggest_command(first_cmd)
+      if suggestions && !suggestions.empty?
+        warnings << "Command '#{first_cmd}' not found. Did you mean: #{suggestions.join(', ')}?"
+      end
+    end
+  end
+
+  warnings.empty? ? nil : warnings
 end
 def execute_conditional(cmd_line)
   # Split on && and || while preserving the operators
@@ -1316,6 +1650,25 @@ def load_rshrc_safe
     @nick = {} unless @nick.is_a?(Hash)
     @gnick = {} unless @gnick.is_a?(Hash)
     @cmd_frequency = {} unless @cmd_frequency.is_a?(Hash)
+    @cmd_stats = {} unless @cmd_stats.is_a?(Hash)
+    @bookmarks = {} unless @bookmarks.is_a?(Hash)
+    @defuns = {} unless @defuns.is_a?(Hash)
+
+    # Restore defuns from .rshrc
+    if @defuns && !@defuns.empty?
+      @defuns.each do |name, func_def|
+        next unless func_def.is_a?(String)
+        if func_def =~ /^(\w+)\s*\(([^)]*)\)\s*=\s*(.+)$/
+          func_name, func_params, func_body = $1, $2, $3
+          begin
+            eval_code = "def #{func_name}(#{func_params}); #{func_body}; end"
+            singleton_class.class_eval(eval_code)
+          rescue => e
+            puts "Warning: Could not load defun '#{name}': #{e.message}" if ENV['RSH_DEBUG']
+          end
+        end
+      end
+    end
 
   rescue SyntaxError => e
     puts "\n\033[31mERROR: Syntax error in .rshrc:\033[0m"
@@ -1429,6 +1782,11 @@ def load_defaults
   @completion_show_descriptions ||= false
   @completion_fuzzy ||= true
   @cmd_frequency ||= {}
+  @cmd_stats ||= {}
+  @bookmarks ||= {}
+  @defuns ||= {}
+  @switch_cache ||= {}
+  @switch_cache_time ||= {}
   puts "Loaded with default configuration."
 end
 
@@ -1509,7 +1867,7 @@ loop do
   begin
     @user = Etc.getpwuid(Process.euid).name # For use in @prompt
     @node = Etc.uname[:nodename]            # For use in @prompt
-    h = @history; load_rshrc_safe; @history = h # reload prompt but not history safely
+    h = @history; f = @cmd_frequency; s = @cmd_stats; b = @bookmarks; d = @defuns; load_rshrc_safe; @history = h; @cmd_frequency = f; @cmd_stats = s; @bookmarks = b; @defuns = d # reload prompt but preserve runtime data
     @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
     system("printf \"\033]0;rsh: #{Dir.pwd}\007\"")   # Set Window title to path 
     @history[0] = "" unless @history[0]
@@ -1609,11 +1967,22 @@ loop do
         @cmd = Dir.home if @cmd == "~"
         @cmd = @dirs[1] if @cmd == "-"
         @cmd = @dirs[@cmd.to_i] if @cmd =~ /^\d$/
-        # Check if it's a directory to change to
+        # Check if it's a directory to change to first
         dir = @cmd.strip.sub(/~/, Dir.home)
         if Dir.exist?(dir)
-          Dir.chdir(dir) 
+          Dir.chdir(dir)
           system("git status .") if Dir.exist?(".git")
+        # Then check if it's a bookmark (commands and nicks already handled above)
+        elsif @bookmarks && @bookmarks[@cmd]
+          bookmark_data = @bookmarks[@cmd]
+          bm_dir = bookmark_data.is_a?(Hash) ? bookmark_data[:path] : bookmark_data
+          if Dir.exist?(bm_dir)
+            Dir.chdir(bm_dir)
+            puts "Jumped to bookmark '#{@cmd}' → #{bm_dir}".c(@c_path)
+            system("git status .") if Dir.exist?(".git")
+          else
+            puts "Bookmark '#{@cmd}' points to non-existent directory: #{bm_dir}".c(196)
+          end
         else
           puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
           if @cmd == "f" # fzf integration (https://github.com/junegunn/fzf)
@@ -1630,15 +1999,33 @@ loop do
                 Thread.new { system("xdg-open #{@cmd} 2>/dev/null") }
               end
             end
-          else 
+          else
             begin
+              # Validate command before execution
+              warnings = validate_command(@cmd)
+              if warnings && !warnings.empty?
+                warnings.each { |w| puts "#{w}".c(196) }
+                # For critical warnings, ask for confirmation
+                if warnings.any? { |w| w.start_with?("WARNING:") }
+                  print "Continue anyway? (y/N): "
+                  response = $stdin.gets.chomp
+                  unless response.downcase == 'y'
+                    puts "Command cancelled"
+                    next
+                  end
+                end
+              end
+
               pre_cmd
 
               # Track command frequency for intelligent completion
-              if @cmd && !@cmd.empty?
-                cmd_base = @cmd.split.first
-                @cmd_frequency[cmd_base] = (@cmd_frequency[cmd_base] || 0) + 1 if cmd_base
+              cmd_base = @cmd.split.first if @cmd && !@cmd.empty?
+              if cmd_base
+                @cmd_frequency[cmd_base] = (@cmd_frequency[cmd_base] || 0) + 1
               end
+
+              # Start timing
+              start_time = Time.now
 
               # Handle background jobs
               if @cmd.end_with?(' &')
@@ -1653,13 +2040,23 @@ loop do
                 @jobs[@job_id] = {pid: pid, cmd: @cmd, status: :running}
                 puts "[#{@job_id}] #{pid} #{@cmd}"
               else
-                # Better handling of pipes and redirections  
+                # Better handling of pipes and redirections
                 @current_pid = spawn(@cmd)
                 Process.wait(@current_pid)
                 @last_exit = $?.exitstatus
                 @current_pid = nil
                 puts " Command failed: #{@cmd} (exit #{@last_exit})" unless @last_exit == 0
               end
+
+              # Track execution time
+              elapsed = Time.now - start_time
+              if cmd_base && elapsed > 0.01  # Only track if > 10ms
+                @cmd_stats[cmd_base] ||= {count: 0, total_time: 0.0, avg_time: 0.0}
+                @cmd_stats[cmd_base][:count] += 1
+                @cmd_stats[cmd_base][:total_time] += elapsed
+                @cmd_stats[cmd_base][:avg_time] = @cmd_stats[cmd_base][:total_time] / @cmd_stats[cmd_base][:count]
+              end
+
               post_cmd
             rescue StandardError => err
               puts "\nError: #{err}"

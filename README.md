@@ -33,7 +33,18 @@ Or simply `gem install ruby-shell`.
 * All colors are themeable in .rshrc (see github link for possibilities)
 * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
 
-## NEW in v2.9.0 - AI Integration ⭐
+## NEW in v3.0.0 - Major Feature Release ⭐⭐⭐
+* **Persistent Ruby Functions**: defun functions now save to .rshrc and persist across sessions
+* **Smart Command Suggestions**: Typo detection with "Did you mean...?" suggestions using Levenshtein distance
+* **Command Analytics**: New `:stats` command shows usage statistics, performance metrics, and most-used commands
+* **Switch Completion Caching**: Command switches from --help are cached for instant completion
+* **Enhanced Bookmarks**: Bookmark directories with tags - `:bookmark name path #tag1,tag2`
+* **Session Management**: Save and restore entire shell sessions with `:save_session` and `:load_session`
+* **Syntax Validation**: Pre-execution warnings for common mistakes, dangerous commands, and typos
+* **Option Value Completion**: TAB completion for option values like `--format=<TAB>` → json, yaml, xml
+* **Command Performance Tracking**: Automatically tracks execution time and shows slowest commands
+
+## AI Integration (v2.9.0) ⭐
 * **AI-powered command assistance**: Get help with commands using natural language
 * **`@ <question>`**: Ask questions and get AI-generated text responses
 * **`@@ <request>`**: Describe what you want to do, and AI suggests the command
@@ -73,13 +84,18 @@ Special functions/integrations:
 Special commands:
 * `:nick 'll = ls -l'` to make a command alias (ll) point to a command (ls -l)
 * `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
-* `:nickdel 'name'` to delete a command nick (or use `:nick '-name'`)
-* `:gnickdel 'name'` to delete a general nick (or use `:gnick '-name'`)
-* `:nick?` will list all command nicks and general nicks (you can edit your nicks in .rshrc)
+* `:nick` lists all command nicks, `:gnick` lists general nicks (NEW in v3.0)
+* `:nick '-name'` delete a command nick, `:gnick '-name'` delete a general nick (NEW in v3.0)
 * `:history` will list the command history, while `:rmhistory` will delete the history
 * `:jobs` will list background jobs, `:fg [job_id]` brings jobs to foreground, `:bg [job_id]` resumes stopped jobs
-* `:defun 'func(args) = code'` defines Ruby functions callable as shell commands
+* `:defun 'func(args) = code'` defines Ruby functions callable as shell commands (now persistent!)
 * `:defun?` lists all user-defined functions, `:defun '-func'` removes functions
+* `:stats` shows command execution statistics and analytics (NEW in v3.0)
+* `:bm "name"` or `:bookmark "name"` bookmark current directory, `:bm "name path #tags"` with tags (NEW in v3.0)
+* `:bm` lists all bookmarks, just type bookmark name to jump (e.g., `work`) (NEW in v3.0)
+* `:bm "-name"` delete bookmark, `:bm "?tag"` search by tag (NEW in v3.0)
+* `:save_session` saves current shell session (pwd, history, bookmarks, defuns) (NEW in v3.0)
+* `:load_session` restores previously saved session (NEW in v3.0)
 * `:info` shows introduction and feature overview
 * `:version` Shows the rsh version number and the last published gem file version
 * `:help` will display a compact command reference in two columns
@@ -185,7 +201,7 @@ Enter the command `f` to launch the fuzzy finder - select the directory/file you
 If you start a line with "=", the rest of the line will be interpreted as an XRPN program. This gives you the full power of XRPN right at your fingertips. You can do simple stuff like this: `=13,23,*,x^2` and the answer to `(13 * 23)^2` will be given (89401) in the format that you have set in your `.xrpn/conf`. Or you can do more elaborate stuff like `=fix 6,5,sto c,time,'Time now is: ',atime,aview,pse,fix 0,lbl a,rcl c,prx,dse c,gto a`. Go crazy. Use single-quotes for any Alpha entry.
 
 ## Syntax highlighting
-rsh will highlight nicks, gnicks, commands and dirs/files as they are written on the command line.
+rsh will highlight nicks, gnicks, bookmarks, commands, switches and dirs/files as they are written on the command line. Each element type has its own color (customizable in .rshrc).
 
 ## Theming
 In the supplied `.rshrc`, you will find a set of colors that you can change:
@@ -197,6 +213,8 @@ Variable        | Description
 `@c_nick`       | Color for matching nick
 `@c_gnick`      | Color for matching gnick
 `@c_path`       | Color for valid path
+`@c_switch`     | Color for command switches/options
+`@c_bookmark`   | Color for bookmarks (NEW in v3.0)
 `@c_tabselect`  | Color for selected tabcompleted item
 `@c_taboption`  | Color for unselected tabcompleted item
 `@c_stamp`      | Color for time stamp/command
