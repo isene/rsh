@@ -1,5 +1,34 @@
 # rsh Changelog
 
+## v2.12.0 - Extensible Command Completion System (2025-10-22)
+
+### ✓ **SMART SUBCOMMAND COMPLETION**
+- **Comprehensive command support**: Tab completion now works for common commands
+  - `git <TAB>` shows: add, bisect, branch, checkout, clone, commit, diff, fetch, grep, init, log, merge, mv, pull, push, rebase, reset, restore, rm, show, stash, status, switch, tag
+  - `apt <TAB>` shows: install, remove, update, upgrade, search, show, list, autoremove, purge
+  - `apt-get <TAB>` shows: install, remove, update, upgrade, dist-upgrade, autoremove, purge, clean, autoclean
+  - `docker <TAB>` shows: build, run, ps, images, pull, push, start, stop, restart, rm, rmi, exec, logs, inspect, network, volume
+  - `systemctl <TAB>` shows: start, stop, restart, reload, status, enable, disable, is-active, is-enabled, list-units
+  - `cargo <TAB>` shows: build, run, test, check, clean, doc, new, init, add, search, publish, install, update
+  - `npm <TAB>` shows: install, uninstall, update, run, build, test, start, init, publish
+  - `gem <TAB>` shows: install, uninstall, update, list, search, build, push
+  - `bundle <TAB>` shows: install, update, exec, check, config
+- **Extensible architecture**: Users can add custom command completions in .rshrc:
+  ```ruby
+  @cmd_completions["mycommand"] = %w[start stop restart status]
+  ```
+- **Consistent behavior**: All completions respect existing settings like case-sensitivity and fuzzy matching
+
+### ✓ **IMPROVEMENTS**
+- Replaced hardcoded git completion with flexible system
+- Smart context detection now uses @cmd_completions hash
+- Better code organization and maintainability
+
+### ✓ **DOCUMENTATION**
+- Updated help text to show smart completion examples
+- Enhanced info text with new completion features
+- Clear examples for extending completions
+
 ## v2.11.1 - Critical Nick Persistence Bugfix (2025-10-04)
 
 ### 🐛 **BUGFIX**

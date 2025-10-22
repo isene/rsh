@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "2.11.0" # Enhanced TAB completion with smart context-aware completion, frequency scoring, fuzzy matching, and more
+@version    = "2.12.0" # Extensible command completion system for git, apt, docker, systemctl, cargo, npm, gem, bundle
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -119,6 +119,18 @@ begin # Initialization
   @job_id      = 0                        # Job counter
   @ai_suggestion = nil                    # Store AI command suggestion
   @last_exit   = 0                        # Last command exit status
+  # Command completions for subcommands
+  @cmd_completions = {
+    "git" => %w[add bisect branch checkout clone commit diff fetch grep init log merge mv pull push rebase reset restore rm show stash status switch tag],
+    "apt" => %w[install remove update upgrade search show list autoremove purge],
+    "apt-get" => %w[install remove update upgrade dist-upgrade autoremove purge clean autoclean],
+    "docker" => %w[build run ps images pull push start stop restart rm rmi exec logs inspect network volume],
+    "systemctl" => %w[start stop restart reload status enable disable is-active is-enabled list-units],
+    "cargo" => %w[build run test check clean doc new init add search publish install update],
+    "npm" => %w[install uninstall update run build test start init publish],
+    "gem" => %w[install uninstall update list search build push],
+    "bundle" => %w[install update exec check config]
+  }
   def pre_cmd; end                        # User-defined function to be run BEFORE command execution
   def post_cmd; end                       # User-defined function to be run AFTER  command execution
 end
@@ -136,6 +148,7 @@ end
   * Aliases (called nicks in rsh) - both for commands and general nicks
   * Syntax highlighting, matching nicks, system commands and valid dirs/files
   * Tab completions for nicks, system commands, command switches and dirs/files
+  * Smart context-aware tab completion for git, apt, docker, systemctl, cargo, npm, gem, bundle
   * Tab completion presents matches in a list to pick from
   * When you start to write a command, rsh will suggest the first match in the history and
     present that in "toned down" letters - press the arrow right key to accept the suggestion
@@ -484,12 +497,16 @@ def tab(type)
       type = "dirs_only"
     when "vim", "nano", "cat", "less", "more", "head", "tail", "file"
       type = "files_only"
-    when "git"
-      type = "git_subcommands" if cmd_parts.length == 1
     when "man", "info", "which", "whatis"
       type = "commands_only"
     when "export", "unset"
       type = "env_vars"
+    else
+      # Check if command has defined completions and we're on the first argument
+      if @cmd_completions.key?(last_cmd) && cmd_parts.length == 1
+        type = "cmd_subcommands"
+        @current_cmd = last_cmd
+      end
     end
   end
 
@@ -519,10 +536,10 @@ def tab(type)
       ex.prepend(*@nick.keys, *@gnick.keys)
       regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
       @tabarray = ex.select { |s| s =~ Regexp.new(@tabstr, regex_flags) }
-    when "git_subcommands" # Git subcommands
-      git_cmds = %w[add branch checkout clone commit diff fetch init log merge pull push rebase reset status tag]
+    when "cmd_subcommands" # Command-specific subcommands (git, apt, docker, etc.)
+      subcommands = @cmd_completions[@current_cmd] || []
       regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
-      @tabarray = git_cmds.select { |cmd| cmd =~ Regexp.new(@tabstr, regex_flags) }
+      @tabarray = subcommands.select { |cmd| cmd =~ Regexp.new(@tabstr, regex_flags) }
     when "env_vars"     # Environment variables
       env_vars = ENV.keys.map { |k| "$#{k}" }
       regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
@@ -754,6 +771,10 @@ def rshrc # Write updates to .rshrc
   conf += "@gnick = #{@gnick}\n"
   conf.sub!(/^@cmd_frequency.*(\n|$)/, "")
   conf += "@cmd_frequency = #{@cmd_frequency}\n"
+  # Only write @cmd_completions if user has customized it
+  unless conf =~ /^@cmd_completions\s*=/
+    # Don't write default completions to avoid cluttering .rshrc
+  end
   conf.sub!(/^@history.*(\n|$)/, "")
   # Ensure history is properly formatted as valid Ruby array
   begin
@@ -830,6 +851,12 @@ def help
   right_col << "AI FEATURES:".c(@c_prompt).b
   right_col << "@ <question>        AI text response"
   right_col << "@@ <request>        AI command → prompt"
+  right_col << ""
+  right_col << "SMART COMPLETIONS:".c(@c_prompt).b
+  right_col << "git <TAB>           Git subcommands"
+  right_col << "apt/docker <TAB>    Command options"
+  right_col << "Supports: git, apt, docker,"
+  right_col << "systemctl, cargo, npm, gem"
   right_col << ""
   right_col << "EXPANSIONS:".c(@c_prompt).b
   right_col << "~                   Home directory"
