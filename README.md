@@ -125,12 +125,19 @@ Add to your `.rshrc`:
 While you `cd` around to different directories, you can see the last 10 directories visited via the command `:dirs` or the convenient shortcut `#`. Entering the number in the list (like `6` and ENTER) will jump you to that directory. Entering `-` will jump you back to the previous dir (equivalent of `1`. Entering `~` will get you to your home dir. If you want to bookmark a special directory, you can do that via a general nick like this: `:gnick "x = /path/to/a/dir/"` - this would bookmark the directory to the single letter `x`.
 
 ## Nicks
-Add command nicks (aliases) with `:nick "some_nick = some_command"`, e.g. `:nick "ls = ls --color"`. Add general nicks that will substitute anything on a command line (not just commands) like this `:gnick "some_gnick = some_command"`, e.g. `:gnick "x = /home/user/somewhere"`. List (g)nicks with `:nick?`. Remove a nick with `:nick "-some_command"`, e.g. `:nick "-ls"` to remove an `ls` nick. Same for gnicks.
+Add command nicks (aliases) with `:nick "some_nick = some_command"`, e.g. `:nick "ls = ls --color"`. Add general nicks that will substitute anything on a command line (not just commands) like this `:gnick "some_gnick = some_command"`, e.g. `:gnick "x = /home/user/somewhere"`. List nicks with `:nick`, list gnicks with `:gnick`. Remove a nick with `:nick "-some_command"`, e.g. `:nick "-ls"` to remove an `ls` nick. Same for gnicks.
 
 ## Tab completion
-You can tab complete almost anything. Hitting `TAB` will try to complete in this priority: nicks, gnicks, commands, dirs/files. Hitting `TAB`after a `-` will list the command switches for the preceding command with a short explanation (from the command's --help), like this `ls -`(`TAB`) will list all the switches/options for the `ls` command. You can add to (or subtract from) the search criteria while selecting possible matches - hit any letter to specify the search, while backspace removes a letter from the search criteria. 
+You can tab complete almost anything. Hitting `TAB` will try to complete in this priority: nicks, gnicks, commands, dirs/files. Special completions:
+- `ls -<TAB>` lists command switches from --help with descriptions
+- `:st<TAB>` completes colon commands (:stats, etc.)
+- `$HO<TAB>` completes environment variables ($HOME, etc.)
+- `git <TAB>` shows git subcommands (add, commit, push, etc.)
+- `--format=<TAB>` completes option values (json, yaml, xml, etc.)
 
-Hitting Shift-TAB will do a similar search through the command history - but with a general match of the search criteria (not only matching at the start).
+You can add to (or subtract from) the search criteria while selecting matches - hit any letter to refine the search, backspace removes a letter from the criteria.
+
+Hitting Shift-TAB will search through the command history with fuzzy matching.
 
 ## Open files
 If you press `ENTER` after writing or tab-completing to a file, rsh will try to open the file in the user's EDITOR of choice (if it is a valid text file) or use `xdg-open` to open the file using the correct program. If you, for some reason want to use `run-mailcap` instead of `xdg-open` as the file opener, simply add `@runmailcap = true` to your `.rshrc`.

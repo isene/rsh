@@ -485,6 +485,7 @@ def tab(type)
   type = "switch" if @tabstr && @tabstr[0] == "-" && !@tabstr.include?("=")
   type = "option_value" if @tabstr && @tabstr =~ /^--?[\w-]+=/
   type = "env_vars" if @tabstr && @tabstr[0] == "$"
+  type = "colon_commands" if @tabstr && @tabstr[0] == ":"
 
   # Debug output when RSH_DEBUG is set
   if ENV['RSH_DEBUG']
@@ -576,6 +577,16 @@ def tab(type)
       env_vars = ENV.keys.map { |k| "$#{k}" }
       regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
       @tabarray = env_vars.select { |var| var =~ Regexp.new(@tabstr, regex_flags) }
+    when "colon_commands"  # Ruby/rsh commands starting with :
+      colon_cmds = %w[
+        :nick :gnick :bm :bookmark :stats :defun :defun?
+        :history :rmhistory :jobs :fg :bg
+        :save_session :load_session :info :version :help
+      ]
+      search_str = @tabstr[1..-1] || ""  # Remove leading :
+      regex_flags = @completion_case_sensitive ? 0 : Regexp::IGNORECASE
+      matches = colon_cmds.select { |cmd| cmd[1..-1] =~ Regexp.new("^#{search_str}", regex_flags) }
+      @tabarray = matches
     when "all"          # Handle all other tab completions
       ex  = []
       ex += @exe
@@ -928,6 +939,7 @@ def help
   left_col << "RIGHT/Ctrl-F    Accept suggestion"
   left_col << "UP/DOWN         Navigate history"
   left_col << "TAB             Tab complete"
+  left_col << "Shift-TAB       Search history"
   left_col << "Ctrl-Y          Copy to clipboard"
   left_col << "Ctrl-D          Exit + save .rshrc"
   left_col << "Ctrl-E          Exit without save"
