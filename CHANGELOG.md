@@ -1,5 +1,40 @@
 # rsh Changelog
 
+## v3.4.0 - Completion Learning (2025-10-22)
+
+### ✓ **INTELLIGENT TAB COMPLETION**
+- Shell learns which completions you use most
+- Frequently-selected options appear first in TAB list
+- Tracks selections per context (git, ls, docker, etc.)
+- Persists learning data to .rshrc across sessions
+
+### ✓ **COMPLETION STATISTICS**
+- `:completion_stats` shows learned patterns
+- Visual bar charts for completion weights
+- Groups by command context
+- Shows usage frequency per option
+
+### ✓ **LEARNING MANAGEMENT**
+- `:config completion_learning on|off` to enable/disable
+- `:completion_reset` to clear all learning data
+- Enabled by default for better UX
+- Learning data in .rshrc
+
+### ✓ **SMART SORTING**
+- Works for all completion types (commands, switches, subcommands)
+- Context-aware: git completions separate from ls completions
+- Handles switches with descriptions correctly
+- Alphabetical fallback when no learning data
+
+### ✓ **IMPLEMENTATION**
+- Tracks every TAB completion selection
+- Weight-based sorting algorithm
+- Context detection from command being completed
+- Switch description extraction for proper matching
+- ~60 lines of intelligent code
+
+---
+
 ## v3.3.0 - Quote-less Syntax (2025-10-22)
 
 ### ✓ **SIMPLIFIED COLON COMMAND SYNTAX**

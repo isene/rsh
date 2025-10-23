@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.3.0" # Quote-less syntax: Simplified colon commands without quotes for cleaner UX
+@version    = "3.4.0" # Completion learning: Shell learns your patterns and boosts frequently-used completions
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -151,6 +151,10 @@ begin # Initialization
   @plugin_disabled = []                   # List of disabled plugin names
   @plugin_commands = {}                   # Commands added by plugins
   @validation_rules = []                  # Custom validation rules
+  @completion_weights = {}                # Completion learning weights
+  @completion_learning = true             # Enable completion learning (default: on)
+  @recording = {active: false, name: nil, commands: []} # Command recording state
+  @recordings = {}                        # Saved recordings
   # Built-in rsh commands are called with : prefix, so no need for separate tracking
   Dir.mkdir(Dir.home + '/.rsh') unless Dir.exist?(Dir.home + '/.rsh')
   Dir.mkdir(@session_dir) unless Dir.exist?(@session_dir)
@@ -188,14 +192,18 @@ end
   * Syntax validation - Pre-execution warnings for dangerous or malformed commands
   * Unified command syntax - :nick, :gnick, :bm all work the same way (list/create/delete)
 
-  NEW in v3.3:
-  * Quote-less syntax - No more quotes! Use :nick la = ls -la instead of :nick "la = ls -la"
+  NEW in v3.4:
+  * Completion learning - Shell learns which TAB completions you use and ranks them higher
+  * Context-aware - Separate learning for each command (git, ls, docker, etc.)
+  * :completion_stats - View learned patterns with visual bar charts
+  * Persistent - Learning data saves to .rshrc across sessions
+
+  v3.3 Features:
+  * Quote-less syntax - No more quotes! Use :nick la = ls -la
   * Parametrized nicks - :nick gp = git push origin {{branch}}, then: gp branch=main
   * Ctrl-G multi-line edit - Press Ctrl-G to edit command in $EDITOR
   * Custom validation - :validate rm -rf / = block prevents dangerous commands
   * Shell script support - for/while/if loops work with full bash syntax
-  * Simplified - Removed :template, everything now in :nick
-  * Backward compatible - Old quote syntax still works
 
   v3.2 Features:
   * Plugin system - Extensible architecture for custom commands, completions, and hooks
@@ -507,7 +515,7 @@ def getstr # A custom Readline-like function
       lift = true
     when 'S-TAB'
       @ci = nil
-      tabbing("hist")
+      tab("hist")
       lift = true
     when /^.$/
       @history[0].insert(@pos,chr)
@@ -567,20 +575,29 @@ def tab(type)
       last_cmd = nil
     end
 
-    case last_cmd
-    when "cd", "pushd", "rmdir"
-      type = "dirs_only"
-    when "vim", "nano", "cat", "less", "more", "head", "tail", "file"
-      type = "files_only"
-    when "man", "info", "which", "whatis"
-      type = "commands_only"
-    when "export", "unset"
-      type = "env_vars"
+    # Check for colon command arguments
+    if @pretab =~ /:record\s*$/
+      type = "record_args"
+    elsif @pretab =~ /:replay\s*$/
+      type = "replay_args"
+    elsif @pretab =~ /:plugins\s*$/
+      type = "plugin_args"
     else
-      # Check if command has defined completions and we're on the first argument
-      if @cmd_completions.key?(last_cmd) && cmd_parts.length == 1
-        type = "cmd_subcommands"
-        @current_cmd = last_cmd
+      case last_cmd
+      when "cd", "pushd", "rmdir"
+        type = "dirs_only"
+      when "vim", "nano", "cat", "less", "more", "head", "tail", "file"
+        type = "files_only"
+      when "man", "info", "which", "whatis"
+        type = "commands_only"
+      when "export", "unset"
+        type = "env_vars"
+      else
+        # Check if command has defined completions and we're on the first argument
+        if @cmd_completions.key?(last_cmd) && cmd_parts.length == 1
+          type = "cmd_subcommands"
+          @current_cmd = last_cmd
+        end
       end
     end
   end
@@ -591,6 +608,27 @@ def tab(type)
       @tabarray = @history.select {|el| el =~ /#{@tabstr}/} # Select history items matching @tabstr
       @tabarray.shift   # Take away @history[0]
       return if @tabarray.empty?
+    when "record_args"
+      # Completions for :record command
+      @tabarray = %w[start stop status show]
+      # Add existing recording names for show
+      @tabarray += @recordings.keys.map { |k| "show #{k}" } if @recordings.any?
+      # Add delete options
+      @tabarray += @recordings.keys.map { |k| "-#{k}" } if @recordings.any?
+    when "replay_args"
+      # Completions for :replay command - just recording names
+      @tabarray = @recordings.keys
+    when "plugin_args"
+      # Completions for :plugins command
+      @tabarray = %w[reload info]
+      # Add plugin names for enable/disable/info
+      if @plugins.any?
+        @tabarray += @plugins.map { |p| "disable #{p[:name]}" }
+        @tabarray += @plugins.map { |p| "info #{p[:name]}" }
+      end
+      if @plugin_disabled.any?
+        @tabarray += @plugin_disabled.map { |p| "enable #{p}" }
+      end
     when "switch"
       cmdswitch = @pretab.split(/[|, ]/).last.to_s.strip
       @tabarray = get_command_switches(cmdswitch)
@@ -642,6 +680,8 @@ def tab(type)
         :history :rmhistory :jobs :fg :bg
         :save_session :load_session :list_sessions :delete_session :rmsession
         :config :env :theme :plugins :calc :validate
+        :completion_stats :completion_reset
+        :record :replay
         :info :version :help
       ]
       search_str = @tabstr[1..-1] || ""  # Remove leading :
@@ -722,6 +762,19 @@ def tab(type)
     end
     return if @tabarray.empty?
     @tabarray.delete("")                                      # Don't remember why
+
+    # Apply completion learning to sort results
+    if @completion_learning && type != "hist"
+      # Determine context for learning
+      completion_context = if @pretab && !@pretab.empty?
+        # Use the command being completed
+        @pretab.strip.split(/[|;&]/).last.strip.split.first || "all"
+      else
+        "all"
+      end
+      @tabarray = sort_by_learning(completion_context, @tabarray)
+    end
+
     @c.clear_screen_down                                      # Here we go
     max_items = @completion_limit || 5
     @tabarray.length.to_i - i < max_items ? l = @tabarray.length.to_i - i : l = max_items
@@ -807,6 +860,18 @@ def tab(type)
   @c.row(@c_row)
   @c.col(@c_col)
   @history[0] = @newhist0
+
+  # Track completion selection for learning
+  if @completion_learning && @tabarray && @tabarray[i] && type != "hist"
+    completion_context = if @pretab && !@pretab.empty?
+      @pretab.strip.split(/[|;&]/).last.strip.split.first || "all"
+    else
+      "all"
+    end
+    selected = @tabarray[i]
+    selected = selected.sub(/\s*(-.*?)[,\s].*/, '\1') if type == "switch"
+    track_completion(completion_context, selected)
+  end
 end
 def nextline # Handle going to the next line in the terminal
   row, col = @c.pos
@@ -928,6 +993,7 @@ def config(*args) # Configure rsh settings
     puts "    session_autosave:   #{@session_autosave}s #{@session_autosave > 0 ? '(enabled)' : '(disabled)'}"
     puts "    auto_correct:       #{@auto_correct ? 'on' : 'off'}"
     puts "    slow_command_threshold: #{@slow_command_threshold}s #{@slow_command_threshold > 0 ? '(enabled)' : '(disabled)'}"
+    puts "    completion_learning: #{@completion_learning ? 'on' : 'off'}"
     puts "    completion_limit:   #{@completion_limit}"
     puts "    completion_fuzzy:   #{@completion_fuzzy}"
     puts "    completion_case_sensitive: #{@completion_case_sensitive}"
@@ -956,13 +1022,17 @@ def config(*args) # Configure rsh settings
     @slow_command_threshold = value.to_i
     puts "Slow command threshold set to #{value}s #{value.to_i > 0 ? '(enabled)' : '(disabled)'}"
     rshrc
+  when 'completion_learning'
+    @completion_learning = %w[on true yes 1].include?(value.to_s.downcase)
+    puts "Completion learning #{@completion_learning ? 'enabled' : 'disabled'}"
+    rshrc
   when 'completion_limit'
     @completion_limit = value.to_i
     puts "Completion limit set to #{value}"
     rshrc
   else
     puts "Unknown setting '#{setting}'"
-    puts "Available: history_dedup, session_autosave, auto_correct, slow_command_threshold, completion_limit"
+    puts "Available: history_dedup, session_autosave, auto_correct, slow_command_threshold, completion_learning, completion_limit"
   end
 end
 def env(*args) # Environment variable management
@@ -1081,6 +1151,12 @@ def rshrc # Write updates to .rshrc
   conf += "@plugin_disabled = #{@plugin_disabled}\n" unless @plugin_disabled.empty?
   conf.sub!(/^@validation_rules.*(\n|$)/, "")
   conf += "@validation_rules = #{@validation_rules}\n" unless @validation_rules.empty?
+  conf.sub!(/^@completion_weights.*(\n|$)/, "")
+  conf += "@completion_weights = #{@completion_weights}\n" unless @completion_weights.empty?
+  conf.sub!(/^@completion_learning.*(\n|$)/, "")
+  conf += "@completion_learning = #{@completion_learning}\n" unless @completion_learning
+  conf.sub!(/^@recordings.*(\n|$)/, "")
+  conf += "@recordings = #{@recordings}\n" unless @recordings.empty?
   # Only write @cmd_completions if user has customized it
   unless conf =~ /^@cmd_completions\s*=/
     # Don't write default completions to avoid cluttering .rshrc
@@ -1101,125 +1177,123 @@ end
 # RSH FUNCTIONS
 def help
   # Get terminal width
-  term_width = @maxcol || 80
-  col_width = 48  # Fixed width for left column
-  
+  term_width = @maxcol || 120
+  col_width = 36  # Width for each of 3 columns (wider)
+
   # Helper function to strip ANSI codes for length calculation
   def strip_ansi(str)
     str.gsub(/\001?\e\[[0-9;]*m\002?/, '')
   end
-  
-  left_col = []
-  right_col = []
-  
-  # Left column content
-  left_col << "KEYBOARD SHORTCUTS:".c(@c_prompt).b
-  left_col << "RIGHT/Ctrl-F    Accept suggestion"
-  left_col << "UP/DOWN         Navigate history"
-  left_col << "TAB             Tab complete"
-  left_col << "Shift-TAB       Search history"
-  left_col << "Ctrl-G          Edit in $EDITOR"
-  left_col << "Ctrl-Y          Copy to clipboard"
-  left_col << "Ctrl-D          Exit + save .rshrc"
-  left_col << "Ctrl-E          Exit without save"
-  left_col << "Ctrl-L          Clear screen"
-  left_col << "Ctrl-Z          Suspend job"
-  left_col << "Ctrl-C          Clear line"
-  left_col << "Ctrl-K          Delete history item"
-  left_col << "Ctrl-U          Clear line"
-  left_col << "Ctrl-W          Delete previous word"
-  left_col << ""
-  left_col << "SPECIAL COMMANDS:".c(@c_prompt).b
-  left_col << ":nick ll = ls -l    Command alias"
-  left_col << ":gnick h = /home    General alias"
-  left_col << ":nick               List nicks"
-  left_col << ":gnick              List gnicks"
-  left_col << ":nick -name         Delete nick"
-  left_col << ":gnick -name        Delete gnick"
-  left_col << ":history            Show history"
-  left_col << ":rmhistory          Clear history"
-  left_col << ":info               About rsh"
-  left_col << ":version            Version info"
-  left_col << ":help               This help"
-  
-  # Right column content
-  right_col << "RUBY FUNCTIONS:".c(@c_prompt).b
-  right_col << ":defun f(x) = x*2   Define function"
-  right_col << ":defun?             List functions"
-  right_col << ":defun -f           Remove function"
-  right_col << "Call as: f 5        (returns 10)"
-  right_col << ""
-  right_col << "JOB CONTROL:".c(@c_prompt).b
-  right_col << "command &           Background job"
-  right_col << ":jobs               List jobs"
-  right_col << ":fg [id]            Foreground job"
-  right_col << ":bg [id]            Resume in bg"
-  right_col << ""
-  right_col << "v3.3 NEW FEATURES:".c(@c_prompt).b
-  right_col << "No quotes!          :nick la = ls -la"
-  right_col << ":nick gp={{branch}} Parametrized"
-  right_col << ":validate pat = act Safety rules"
-  right_col << "Ctrl-G              Edit in \$EDITOR"
-  right_col << "for i in {1..5}     Shell scripts"
-  right_col << ""
-  right_col << "v3.2 FEATURES:".c(@c_prompt).b
-  right_col << ":plugins [cmd]      Plugin system"
-  right_col << ":stats --graph      Visual charts"
-  right_col << ":calc 2 + 2         Calculator"
-  right_col << "!!, !-2, !5:7       History chain"
-  right_col << ""
-  right_col << "PLUGIN SYSTEM:".c(@c_prompt).b
-  right_col << ":plugins            List all"
-  right_col << ":plugins reload     Reload"
-  right_col << ":plugins disable nm Disable"
-  right_col << ""
-  right_col << "MORE FEATURES:".c(@c_prompt).b
-  right_col << ":config auto_correct Auto-fix"
-  right_col << ":bm name path #tags Bookmarks"
-  right_col << ":save_session nm    Sessions"
-  right_col << ":theme name         Themes"
-  right_col << ":env VAR            Env vars"
-  right_col << ""
-  right_col << "INTEGRATIONS:".c(@c_prompt).b
-  right_col << "r                   Launch rtfm"
-  right_col << "f                   Launch fzf"
-  right_col << "= <expr>            xrpn calculator"
-  right_col << ":<ruby code>        Execute Ruby"
-  right_col << ""
-  right_col << "AI FEATURES:".c(@c_prompt).b
-  right_col << "@ <question>        AI text response"
-  right_col << "@@ <request>        AI command → prompt"
-  right_col << ""
-  right_col << "SMART COMPLETIONS:".c(@c_prompt).b
-  right_col << "git <TAB>           Git subcommands"
-  right_col << "apt/docker <TAB>    Command options"
-  right_col << "--format=<TAB>      Option values"
-  right_col << "Typo suggestions    Auto-correct"
-  right_col << ""
-  right_col << "EXPANSIONS:".c(@c_prompt).b
-  right_col << "~                   Home directory"
-  right_col << "$VAR, ${VAR}        Environment var"
-  right_col << "$?                  Exit status"
-  right_col << "$(cmd), `cmd`       Command subst"
-  right_col << "{a,b,c}             Brace expansion"
-  right_col << "cmd1 && cmd2        Conditional"
-  right_col << "cmd1 || cmd2        Alternative"
-  
+
+  col1 = []
+  col2 = []
+  col3 = []
+
+  # Column 1: Keyboard + Commands + Jobs
+  col1 << "KEYBOARD:".c(@c_prompt).b
+  col1 << "Ctrl-G    Edit in \$EDITOR"
+  col1 << "Ctrl-Y    Copy line"
+  col1 << "Ctrl-D    Exit + save"
+  col1 << "Ctrl-C    Clear line"
+  col1 << "TAB       Complete"
+  col1 << "Shift-TAB History search"
+  col1 << ""
+  col1 << "CORE COMMANDS:".c(@c_prompt).b
+  col1 << ":nick a = b      Alias"
+  col1 << ":nick gp={{br}}  Parametrized"
+  col1 << ":bm name         Bookmark"
+  col1 << ":defun f()=x     Function"
+  col1 << ":stats           Analytics"
+  col1 << ":validate p=a    Safety rules"
+  col1 << ":calc expr       Calculator"
+  col1 << ":theme name      Color schemes"
+  col1 << ":plugins         Extensions"
+  col1 << ""
+  col1 << "JOBS:".c(@c_prompt).b
+  col1 << "cmd &       Background"
+  col1 << ":jobs       List jobs"
+  col1 << ":fg [id]    Foreground"
+
+  # Column 2: Sessions + Bookmarks + Recording
+  col2 << "SESSIONS:".c(@c_prompt).b
+  col2 << ":save_session nm   Save state"
+  col2 << ":load_session nm   Load state"
+  col2 << ":list_sessions     Show all"
+  col2 << ":rmsession nm|*    Delete"
+  col2 << ""
+  col2 << "BOOKMARKS:".c(@c_prompt).b
+  col2 << ":bm nm path #tag   Create"
+  col2 << "name               Jump to bookmark"
+  col2 << ":bm                List all"
+  col2 << ":bm --stats        Statistics"
+  col2 << ":bm --export f     Export"
+  col2 << ""
+  col2 << "RECORDING:".c(@c_prompt).b
+  col2 << ":record start nm   Start recording"
+  col2 << ":record stop       Stop recording"
+  col2 << ":record show nm    Show commands"
+  col2 << ":record -nm        Delete"
+  col2 << ":replay nm         Execute"
+  col2 << ":record            List all"
+  col2 << ""
+  col2 << "FEATURES:".c(@c_prompt).b
+  col2 << "gp branch=main     Nick template"
+  col2 << "!!                 Repeat last"
+  col2 << "!-2                2nd to last"
+  col2 << "!5:7               Chain commands"
+  col2 << ":stats --graph     Visual charts"
+  col2 << ":completion_stats  Learn patterns"
+
+  # Column 3: Config + Integrations + Expansions
+  col3 << "CONFIG:".c(@c_prompt).b
+  col3 << ":config auto_correct on         Auto-fix"
+  col3 << ":config completion_learning on  Learn TAB"
+  col3 << ":config slow_command_threshold 5  Slow warn"
+  col3 << ":config session_autosave 300    Auto-save"
+  col3 << ":config history_dedup smart     Dedup"
+  col3 << ""
+  col3 << "INTEGRATIONS:".c(@c_prompt).b
+  col3 << "r          rtfm file manager"
+  col3 << "f          fzf fuzzy finder"
+  col3 << "= expr     xrpn calculator"
+  col3 << "@ text     AI text response"
+  col3 << "@@ cmd     AI command suggest"
+  col3 << ""
+  col3 << "EXPANSIONS:".c(@c_prompt).b
+  col3 << "~            Home directory"
+  col3 << "$VAR         Environment var"
+  col3 << "$(cmd)       Command subst"
+  col3 << "{a,b,c}      Brace expansion"
+  col3 << "cmd1 && cmd2 Conditional AND"
+  col3 << "for i in...  Bash scripts"
+  col3 << ""
+  col3 << "MORE:".c(@c_prompt).b
+  col3 << ":help        This help"
+  col3 << ":info        About rsh"
+  col3 << ":version     Version info"
+
   # Pad columns to same length
-  max_lines = [left_col.length, right_col.length].max
-  left_col.fill("", left_col.length...max_lines)
-  right_col.fill("", right_col.length...max_lines)
-  
-  # Print in two columns
+  max_lines = [col1.length, col2.length, col3.length].max
+  col1.fill("", col1.length...max_lines)
+  col2.fill("", col2.length...max_lines)
+  col3.fill("", col3.length...max_lines)
+
+  # Print in three columns
   puts
   max_lines.times do |i|
-    left_text = left_col[i].to_s
-    right_text = right_col[i].to_s
-    # Calculate padding based on visible characters (without ANSI codes)
-    visible_length = strip_ansi(left_text).length
-    padding = col_width - visible_length
-    padding = 0 if padding < 0
-    puts "  #{left_text}#{' ' * padding} #{right_text}"
+    text1 = col1[i].to_s
+    text2 = col2[i].to_s
+    text3 = col3[i].to_s
+
+    # Calculate padding for each column
+    vis1 = strip_ansi(text1).length
+    vis2 = strip_ansi(text2).length
+    pad1 = col_width - vis1
+    pad2 = col_width - vis2
+    pad1 = 0 if pad1 < 0
+    pad2 = 0 if pad2 < 0
+
+    puts "  #{text1}#{' ' * pad1} #{text2}#{' ' * pad2} #{text3}"
   end
   puts
 end
@@ -2150,6 +2224,175 @@ def apply_validation_rules(cmd) # Apply custom validation rules
 
   warnings
 end
+def track_completion(context, selected) # Track completion selection for learning
+  return unless @completion_learning
+  return if context.nil? || selected.nil?
+
+  key = "#{context}:#{selected}"
+  @completion_weights[key] ||= 0
+  @completion_weights[key] += 1
+end
+def sort_by_learning(context, items) # Sort completions by learning weights
+  return items unless @completion_learning
+  return items if @completion_weights.empty?
+
+  # Score each item
+  scored = items.map do |item|
+    # Extract just the switch/command part (before space/description)
+    item_key = item.split(/\s+/).first
+    key = "#{context}:#{item_key}"
+    weight = @completion_weights[key] || 0
+    {item: item, weight: weight}
+  end
+
+  # Sort: highest weight first, then alphabetically
+  scored.sort_by { |s| [-s[:weight], s[:item]] }.map { |s| s[:item] }
+end
+def completion_stats # Show completion learning statistics
+  if @completion_weights.empty?
+    puts "\nNo completion learning data yet"
+    puts "Use TAB completion and selections will be learned over time"
+    return
+  end
+
+  puts "\n  Completion Learning Statistics".c(@c_prompt).b
+  puts "  " + "="*50
+
+  # Group by context
+  by_context = {}
+  @completion_weights.each do |key, weight|
+    context, choice = key.split(':', 2)
+    by_context[context] ||= []
+    by_context[context] << {choice: choice, weight: weight}
+  end
+
+  # Show top contexts
+  by_context.sort_by { |ctx, items| -items.map { |i| i[:weight] }.sum }.first(10).each do |context, items|
+    puts "\n  #{context}:".c(@c_nick)
+    items.sort_by { |i| -i[:weight] }.first(5).each do |item|
+      bar = "■" * ([item[:weight] / 2, 20].min)
+      puts "    #{item[:choice].ljust(20)} #{item[:weight].to_s.rjust(3)}x #{bar.c(@c_path)}"
+    end
+  end
+
+  puts "\n  Total learned patterns: #{@completion_weights.length}"
+  puts
+end
+def completion_reset # Reset all completion learning
+  @completion_weights = {}
+  puts "Completion learning data cleared"
+  rshrc
+end
+def record(*args) # Command recording management
+  action = args[0]
+  name = args[1]
+
+  if action.nil? || action.empty?
+    # List recordings
+    if @recordings.empty?
+      puts "\nNo recordings. Use: :record start name"
+      return
+    end
+
+    puts "\n  Recordings:".c(@c_prompt).b
+    @recordings.each do |rec_name, data|
+      created = Time.at(data[:created] || Time.now.to_i).strftime("%Y-%m-%d %H:%M")
+      count = data[:commands]&.length || 0
+      puts "  #{rec_name.ljust(20)} #{count.to_s.rjust(3)} commands  #{created}"
+    end
+    puts
+
+    # Show if currently recording
+    if @recording[:active]
+      puts "  Currently recording: #{@recording[:name]} (#{@recording[:commands].length} commands so far)".c(214)
+    end
+  elsif action == 'start' && name
+    @recording[:active] = true
+    @recording[:name] = name
+    @recording[:commands] = []
+    @recording[:start_time] = Time.now.to_i
+    puts "Recording started: #{name}".c(@c_path)
+  elsif action == 'stop'
+    if @recording[:active]
+      @recordings[@recording[:name]] = {
+        commands: @recording[:commands],
+        created: @recording[:start_time]
+      }
+      puts "Recording stopped: #{@recording[:name]} (#{@recording[:commands].length} commands)".c(@c_path)
+      @recording[:active] = false
+      rshrc
+    else
+      puts "No active recording"
+    end
+  elsif action == 'status'
+    if @recording[:active]
+      puts "Recording: #{@recording[:name]} (#{@recording[:commands].length} commands)"
+      @recording[:commands].last(5).each { |cmd| puts "  #{cmd}" }
+    else
+      puts "No active recording"
+    end
+  elsif action == 'show' && name
+    # Show recording contents
+    unless @recordings[name]
+      puts "Recording '#{name}' not found"
+      return
+    end
+
+    recording = @recordings[name]
+    created = Time.at(recording[:created] || Time.now.to_i).strftime("%Y-%m-%d %H:%M:%S")
+
+    puts "\n  Recording: #{name}".c(@c_prompt).b
+    puts "  Created: #{created}"
+    puts "  Commands: #{recording[:commands].length}"
+    puts
+
+    recording[:commands].each_with_index do |cmd, i|
+      puts "  #{(i+1).to_s.rjust(3)}. #{cmd}"
+    end
+    puts
+  elsif action =~ /^-(.+)$/
+    # Delete recording
+    rec_name = $1
+    if @recordings.delete(rec_name)
+      puts "Recording '#{rec_name}' deleted"
+      rshrc
+    else
+      puts "Recording '#{rec_name}' not found"
+    end
+  else
+    puts "Usage: :record start name|stop|status|show name|-name"
+  end
+end
+def replay(*args) # Replay recorded commands
+  name = args[0]
+
+  unless name && @recordings[name]
+    puts "Recording '#{name}' not found"
+    record
+    return
+  end
+
+  recording = @recordings[name]
+  commands = recording[:commands] || []
+
+  puts "Replaying '#{name}' (#{commands.length} commands)...".c(@c_path)
+
+  commands.each_with_index do |cmd, i|
+    puts "\n[#{i+1}/#{commands.length}] #{cmd}".c(@c_stamp)
+
+    result = system(cmd)
+    exit_code = $?.exitstatus
+
+    unless result
+      puts " Command failed (exit #{exit_code})".c(196)
+      print "Continue? (Y/n): "
+      response = $stdin.gets.chomp
+      break if response.downcase == 'n'
+    end
+  end
+
+  puts "\nReplay complete".c(@c_path)
+end
 def apply_auto_correct(cmd) # Apply auto-correction to command
   return cmd unless @auto_correct
   return cmd if cmd =~ /^:/  # Don't auto-correct colon commands
@@ -2466,6 +2709,10 @@ def load_rshrc_safe
     @plugins = [] unless @plugins.is_a?(Array)
     @plugin_commands = {} unless @plugin_commands.is_a?(Hash)
     @validation_rules = [] unless @validation_rules.is_a?(Array)
+    @completion_weights = {} unless @completion_weights.is_a?(Hash)
+    @completion_learning = true if @completion_learning.nil?
+    @recording = {active: false, name: nil, commands: []} unless @recording.is_a?(Hash)
+    @recordings = {} unless @recordings.is_a?(Hash)
 
     # Restore defuns from .rshrc
     if @defuns && !@defuns.empty?
@@ -2608,6 +2855,10 @@ def load_defaults
   @plugins ||= []
   @plugin_commands ||= {}
   @validation_rules ||= []
+  @completion_weights ||= {}
+  @completion_learning = true if @completion_learning.nil?
+  @recording ||= {active: false, name: nil, commands: []}
+  @recordings ||= {}
   puts "Loaded with default configuration."
 end
 
@@ -2801,7 +3052,8 @@ loop do
           # List of all known rsh commands (since respond_to? doesn't work for top-level methods)
           known_commands = %w[nick gnick defun defun? bm bookmark stats calc config env theme plugins
                               save_session load_session list_sessions delete_session rmsession
-                              validate
+                              validate completion_stats completion_reset
+                              record replay
                               history rmhistory jobs fg bg dirs help info version]
 
           # Try to call as rsh method
@@ -3056,6 +3308,14 @@ loop do
               # Slow command alert
               if @slow_command_threshold > 0 && elapsed > @slow_command_threshold
                 puts "⚠ Command took #{'%.1f' % elapsed}s (threshold: #{@slow_command_threshold}s)".c(214)
+              end
+
+              # Record command if recording is active
+              if @recording[:active] && @last_exit == 0
+                # Don't record :record commands themselves
+                unless @cmd =~ /^:record/
+                  @recording[:commands] << @cmd
+                end
               end
 
               # Call plugin on_command_after hooks

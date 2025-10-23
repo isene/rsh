@@ -33,7 +33,15 @@ Or simply `gem install ruby-shell`.
 * All colors are themeable in .rshrc (see github link for possibilities)
 * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
 
-## NEW in v3.3.0 - Quote-less Syntax, Parametrized Nicks & More ⭐⭐⭐
+## NEW in v3.4.0 - Intelligent Completion Learning ⭐⭐
+* **Smart TAB Completion**: Shell learns which completions you use most and ranks them higher
+* **Context-Aware Learning**: Separate learning for git, ls, docker, and all other commands
+* **Completion Statistics**: `:completion_stats` shows learned patterns with visual charts
+* **Manageable**: `:config completion_learning on|off`, `:completion_reset` to clear data
+* **Persistent**: Learning data saves to .rshrc, works across sessions
+* **Works Everywhere**: Commands, switches, subcommands - all get smarter over time
+
+## v3.3.0 - Quote-less Syntax, Parametrized Nicks & More ⭐⭐⭐
 * **No More Quotes**: Simplified syntax - `:nick la = ls -la` instead of `:nick "la = ls -la"`
 * **Parametrized Nicks**: `:nick gp = git push origin {{branch}}` then use `gp branch=main`
 * **Ctrl-G Multi-line Edit**: Press Ctrl-G to edit command in $EDITOR for complex scripts
