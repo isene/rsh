@@ -155,6 +155,8 @@ begin # Initialization
   @completion_learning = true             # Enable completion learning (default: on)
   @recording = {active: false, name: nil, commands: []} # Command recording state
   @recordings = {}                        # Saved recordings
+  @command_cache = {}                     # Cache for expensive shell command outputs
+  @last_prompt_dir = nil                  # Track directory for .rshrc reload optimization
   # Built-in rsh commands are called with : prefix, so no need for separate tracking
   Dir.mkdir(Dir.home + '/.rsh') unless Dir.exist?(Dir.home + '/.rsh')
   Dir.mkdir(@session_dir) unless Dir.exist?(@session_dir)
@@ -1157,6 +1159,15 @@ def rshrc # Write updates to .rshrc
   conf += "@completion_learning = #{@completion_learning}\n" unless @completion_learning
   conf.sub!(/^@recordings.*(\n|$)/, "")
   conf += "@recordings = #{@recordings}\n" unless @recordings.empty?
+  # Persist executable cache for faster startup
+  if @exe && @exe.length > 100
+    conf.sub!(/^@exe_cache.*(\n|$)/, "")
+    conf += "@exe_cache = #{@exe.inspect}\n"
+    conf.sub!(/^@exe_cache_path.*(\n|$)/, "")
+    conf += "@exe_cache_path = #{ENV['PATH'].inspect}\n"
+    conf.sub!(/^@exe_cache_time.*(\n|$)/, "")
+    conf += "@exe_cache_time = #{Time.now.to_i}\n"
+  end
   # Only write @cmd_completions if user has customized it
   unless conf =~ /^@cmd_completions\s*=/
     # Don't write default completions to avoid cluttering .rshrc
@@ -2862,9 +2873,39 @@ def load_defaults
   puts "Loaded with default configuration."
 end
 
+def cached_command(cmd, ttl = 300) # Cache expensive command outputs
+  key = cmd.hash
+  now = Time.now.to_i
+
+  if @command_cache[key] && (now - @command_cache[key][:time]) < ttl
+    return @command_cache[key][:result]
+  end
+
+  result = `#{cmd}`.chomp
+  @command_cache[key] = {result: result, time: now}
+
+  # Limit cache size
+  if @command_cache.length > 50
+    # Remove oldest entry
+    oldest = @command_cache.min_by { |k, v| v[:time] }
+    @command_cache.delete(oldest[0])
+  end
+
+  result
+end
 def cache_executables
   current_path = ENV["PATH"]
   current_time = Time.now.to_i
+
+  # Use persisted cache if valid (from .rshrc)
+  if @exe_cache && @exe_cache_path == current_path
+    cache_age = current_time - (@exe_cache_time || 0)
+    if cache_age < 3600  # 1 hour
+      @exe = @exe_cache
+      @exe_cache_paths = current_path
+      return
+    end
+  end
 
   # Only rebuild cache if PATH changed or cache is older than 60 seconds
   return if @exe_cache_paths == current_path && (current_time - @exe_cache_time) < 60
@@ -2940,7 +2981,12 @@ loop do
   begin
     @user = Etc.getpwuid(Process.euid).name # For use in @prompt
     @node = Etc.uname[:nodename]            # For use in @prompt
-    h = @history; f = @cmd_frequency; s = @cmd_stats; b = @bookmarks; d = @defuns; load_rshrc_safe; @history = h; @cmd_frequency = f; @cmd_stats = s; @bookmarks = b; @defuns = d # reload prompt but preserve runtime data
+    # Only reload .rshrc if directory changed (optimization)
+    current_dir = Dir.pwd
+    if @last_prompt_dir != current_dir
+      h = @history; f = @cmd_frequency; s = @cmd_stats; b = @bookmarks; d = @defuns; load_rshrc_safe; @history = h; @cmd_frequency = f; @cmd_stats = s; @bookmarks = b; @defuns = d
+      @last_prompt_dir = current_dir
+    end
     @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
     system("printf \"\033]0;rsh: #{Dir.pwd}\007\"")   # Set Window title to path
     @history[0] = "" unless @history[0]
