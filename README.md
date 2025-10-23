@@ -33,7 +33,18 @@ Or simply `gem install ruby-shell`.
 * All colors are themeable in .rshrc (see github link for possibilities)
 * Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
 
-## NEW in v3.2.0 - Plugin System & Productivity ⭐⭐⭐
+## NEW in v3.3.0 - Quote-less Syntax, Parametrized Nicks & More ⭐⭐⭐
+* **No More Quotes**: Simplified syntax - `:nick la = ls -la` instead of `:nick "la = ls -la"`
+* **Parametrized Nicks**: `:nick gp = git push origin {{branch}}` then use `gp branch=main`
+* **Ctrl-G Multi-line Edit**: Press Ctrl-G to edit command in $EDITOR for complex scripts
+* **Custom Validation Rules**: `:validate rm -rf / = block` prevents dangerous commands
+* **Shell Script Support**: for/while/if loops work with full bash syntax
+* **Cleaner Commands**: `:config auto_correct on`, `:bm work /tmp #dev`, `:theme dracula`
+* **Simplified Architecture**: Removed :template (merged into :nick for simplicity)
+* **Backward Compatible**: Old quote syntax still works for existing .rshrc files
+* **Better UX**: Less typing, more powerful, feels more natural
+
+## v3.2.0 - Plugin System & Productivity ⭐⭐⭐
 * **Plugin Architecture**: Extensible plugin system with lifecycle hooks and extension points
 * **Lifecycle Hooks**: on_startup, on_command_before, on_command_after, on_prompt
 * **Extension Points**: add_completions (TAB completion), add_commands (custom commands)
@@ -109,22 +120,23 @@ Special functions/integrations:
 * Use `:` followed by a Ruby expression to access the whole world of Ruby
 
 Special commands:
-* `:nick 'll = ls -l'` to make a command alias (ll) point to a command (ls -l)
-* `:gnick 'h = /home/me'` to make a general alias (h) point to something (/home/me)
-* `:nick` lists all command nicks, `:gnick` lists general nicks (NEW in v3.0)
-* `:nick '-name'` delete a command nick, `:gnick '-name'` delete a general nick (NEW in v3.0)
+* `:nick ll = ls -l` to make a command alias (ll) point to a command (ls -l)
+* `:gnick h = /home/me` to make a general alias (h) point to something (/home/me)
+* `:nick` lists all command nicks, `:gnick` lists general nicks
+* `:nick -name` delete a command nick, `:gnick -name` delete a general nick
 * `:history` will list the command history, while `:rmhistory` will delete the history
 * `:jobs` will list background jobs, `:fg [job_id]` brings jobs to foreground, `:bg [job_id]` resumes stopped jobs
-* `:defun 'func(args) = code'` defines Ruby functions callable as shell commands (now persistent!)
-* `:defun?` lists all user-defined functions, `:defun '-func'` removes functions
-* `:stats` shows command execution statistics and analytics (NEW in v3.0)
-* `:bm "name"` or `:bookmark "name"` bookmark current directory, `:bm "name path #tags"` with tags (NEW in v3.0)
-* `:bm` lists all bookmarks, just type bookmark name to jump (e.g., `work`) (NEW in v3.0)
-* `:bm "-name"` delete bookmark, `:bm "?tag"` search by tag (NEW in v3.0)
-* `:save_session "name"` saves named session, `:load_session "name"` loads session (NEW in v3.0)
-* `:list_sessions` shows all saved sessions, `:rmsession "name"` or `:rmsession "*"` deletes (NEW in v3.1)
-* `:theme "name"` applies color scheme, `:config` manages settings, `:env` manages environment (NEW in v3.1)
-* `:plugins` lists plugins, `:plugins "disable", "name"` disables, `:plugins "reload"` reloads (NEW in v3.2)
+* `:defun func(args) = code` defines Ruby functions callable as shell commands (persistent!)
+* `:defun?` lists all user-defined functions, `:defun -func` removes functions
+* `:stats` shows command execution statistics, `:stats --graph` for visual charts, `:stats --clear` to reset
+* `:bm name` or `:bookmark name` bookmark current directory, `:bm name path #tags` with tags
+* `:bm` lists all bookmarks, just type bookmark name to jump (e.g., `work`)
+* `:bm -name` delete bookmark, `:bm ?tag` search by tag, `:bm --stats` show statistics
+* `:save_session name` saves named session, `:load_session name` loads session
+* `:list_sessions` shows all saved sessions, `:rmsession name` or `:rmsession *` deletes
+* `:theme name` applies color scheme, `:config` manages settings, `:env` manages environment
+* `:plugins` lists plugins, `:plugins disable name` disables, `:plugins reload` reloads
+* `:calc expression` inline calculator with Ruby Math library
 * `:info` shows introduction and feature overview
 * `:version` Shows the rsh version number and the last published gem file version
 * `:help` will display a compact command reference in two columns
@@ -151,10 +163,82 @@ Add to your `.rshrc`:
 ```
 
 ## Moving around
-While you `cd` around to different directories, you can see the last 10 directories visited via the command `:dirs` or the convenient shortcut `#`. Entering the number in the list (like `6` and ENTER) will jump you to that directory. Entering `-` will jump you back to the previous dir (equivalent of `1`. Entering `~` will get you to your home dir. If you want to bookmark a special directory, you can do that via a general nick like this: `:gnick "x = /path/to/a/dir/"` - this would bookmark the directory to the single letter `x`.
+While you `cd` around to different directories, you can see the last 10 directories visited via the command `:dirs` or the convenient shortcut `#`. Entering the number in the list (like `6` and ENTER) will jump you to that directory. Entering `-` will jump you back to the previous dir (equivalent of `1`. Entering `~` will get you to your home dir. If you want to bookmark a special directory, you can do that via a general nick like this: `:gnick x = /path/to/a/dir/` - this would bookmark the directory to the single letter `x`.
 
 ## Nicks
-Add command nicks (aliases) with `:nick "some_nick = some_command"`, e.g. `:nick "ls = ls --color"`. Add general nicks that will substitute anything on a command line (not just commands) like this `:gnick "some_gnick = some_command"`, e.g. `:gnick "x = /home/user/somewhere"`. List nicks with `:nick`, list gnicks with `:gnick`. Remove a nick with `:nick "-some_command"`, e.g. `:nick "-ls"` to remove an `ls` nick. Same for gnicks.
+
+Nicks are powerful aliases that can be simple command shortcuts or complex parametrized templates.
+
+### Simple Nicks
+```bash
+:nick ls = ls --color        # Simple alias
+:nick la = ls -la            # Another shortcut
+:nick                        # List all nicks
+:nick -la                    # Delete a nick
+```
+
+### Parametrized Nicks (NEW in v3.3!)
+Create templates with `{{placeholder}}` parameters:
+
+```bash
+# Git shortcuts with branch parameter
+:nick gp = git push origin {{branch}}
+gp branch=main               # Executes: git push origin main
+gp branch=develop            # Executes: git push origin develop
+
+# Deployment with multiple parameters
+:nick deploy = ssh {{user}}@{{host}} 'cd {{path}} && git pull'
+deploy user=admin host=prod path=/var/www
+# Executes: ssh admin@prod 'cd /var/www && git pull'
+
+# Backup with source and destination
+:nick backup = rsync -av {{src}} {{dest}}
+backup src=/data dest=/backup
+# Executes: rsync -av /data /backup
+```
+
+**How it works:**
+- Define nick with `{{param}}` placeholders
+- Use with `key=value` syntax
+- Parameters auto-expand and get stripped from final command
+- Works with any number of parameters
+
+### General Nicks (gnicks)
+Substitute anywhere on command line (not just commands):
+```bash
+:gnick h = /home/user        # Directory shortcut
+:gnick                       # List all gnicks
+:gnick -h                    # Delete a gnick
+```
+
+## Multi-line Command Editing (v3.3.0+)
+
+Press **Ctrl-G** to edit the current command in your $EDITOR:
+
+```bash
+# Start typing a complex command
+for i in {1..10}
+
+# Press Ctrl-G
+# Your editor opens with the command
+# Add more lines:
+for i in {1..10}
+  echo "Processing: $i"
+  sleep 1
+done
+
+# Save and quit
+# Command appears on command line (converted to single-line with ;)
+# Press ENTER to execute
+```
+
+**Perfect for:**
+- Complex shell scripts
+- Long commands with many options
+- Multi-line constructs (for, while, if)
+- Commands you want to review/edit carefully
+
+---
 
 ## Tab completion
 You can tab complete almost anything. Hitting `TAB` will try to complete in this priority: nicks, gnicks, commands, dirs/files. Special completions:
@@ -226,6 +310,43 @@ Ruby functions have access to:
 - Network requests
 - JSON/XML parsing
 - And everything else Ruby can do!
+
+## Custom Validation Rules (v3.3.0+)
+
+Create safety rules to block, confirm, warn, or log specific command patterns:
+
+```bash
+# Block dangerous commands completely
+:validate rm -rf / = block
+
+# Require confirmation for risky operations
+:validate git push --force = confirm
+:validate DROP TABLE = confirm
+
+# Show warnings but allow execution
+:validate sudo = warn
+:validate chmod 777 = warn
+
+# Log specific commands for audit trail
+:validate npm install = log
+# Logs to ~/.rsh_validation.log
+
+# List all rules
+:validate
+
+# Delete rule by index
+:validate -1
+```
+
+**Actions:**
+- `block` - Prevent command execution completely
+- `confirm` - Ask for confirmation (y/N)
+- `warn` - Show warning but allow
+- `log` - Silently log to ~/.rsh_validation.log
+
+**Pattern matching:** Uses regex, so you can match complex patterns.
+
+---
 
 ## Plugin System (v3.2.0+)
 

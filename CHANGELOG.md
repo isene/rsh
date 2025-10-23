@@ -1,5 +1,84 @@
 # rsh Changelog
 
+## v3.3.0 - Quote-less Syntax (2025-10-22)
+
+### ✓ **SIMPLIFIED COLON COMMAND SYNTAX**
+- **No more quotes required** for colon command arguments
+- Old syntax: `:nick "la = ls -la"` → New syntax: `:nick la = ls -la`
+- Old syntax: `:config "auto_correct", "on"` → New syntax: `:config auto_correct on`
+- Old syntax: `:bm "work /tmp #dev"` → New syntax: `:bm work /tmp #dev`
+- Backward compatible - old quote syntax still works
+- Applies to all colon commands: nick, gnick, defun, bm, config, theme, env, plugins, etc.
+
+### ✓ **IMPROVED USER EXPERIENCE**
+- Less typing, more natural syntax
+- Cleaner command examples
+- Easier to remember and use
+- Consistent with shell command style
+- Updated all help text and documentation
+
+### ✓ **IMPLEMENTATION**
+- Smart parsing: single-string commands (nick, gnick, defun, bm) get full arg string
+- Variadic commands (config, theme, stats, etc.) get args split by whitespace
+- Known commands list for proper routing (since respond_to? doesn't work)
+- Fallback to eval() for arbitrary Ruby expressions (:puts 2+2 still works)
+
+### ✓ **CTRL-G EDIT IN $EDITOR**
+- Press Ctrl-G to edit current command line in your $EDITOR
+- Perfect for complex multi-line commands
+- Creates temp file, opens editor, reads back edited content
+- Multi-line commands automatically converted to single-line with semicolons
+- Uses $EDITOR environment variable (falls back to vi)
+- Temp file auto-deleted after editing
+
+### ✓ **PARAMETRIZED NICKS**
+- Nicks now support {{placeholder}} parameters
+- `:nick gp = git push origin {{branch}}`
+- Use with: `gp branch=main` → executes `git push origin main`
+- Multiple parameters: `:nick deploy = ssh {{user}}@{{host}} '{{cmd}}'`
+- Parameters auto-stripped after expansion (clean execution)
+- All within :nick - no separate :alias or :template command needed
+
+### ✓ **CUSTOM VALIDATION RULES**
+- User-defined safety rules with `:validate pattern = action`
+- Actions: block (prevent), confirm (ask), warn (show), log (record)
+- `:validate rm -rf / = block` - Completely prevents dangerous commands
+- `:validate git push --force = confirm` - Requires user confirmation
+- `:validate sudo = warn` - Shows warning but allows execution
+- `:validate npm install = log` - Logs to ~/.rsh_validation.log
+- List rules: `:validate`, Delete by index: `:validate -1`
+- Persists to .rshrc
+
+### ✓ **SHELL SCRIPT SUPPORT**
+- Full bash syntax support for for/while/if loops
+- Commands with shell keywords execute via `bash -c`
+- Skips rsh expansions (braces, variables, nicks) for shell scripts
+- Example: `for i in {1..5}; do echo $i; done` works perfectly
+- Auto-detects: for, while, if, case, function, until keywords
+- Shell keywords protected from auto-correction
+
+### ✓ **SIMPLIFIED ARCHITECTURE**
+- Removed :template command (merged into :nick)
+- Templates are now just parametrized nicks
+- One unified command for simple aliases and complex templates
+- ~100 lines of code removed
+- Simpler to understand and use
+
+### ✓ **POLISH & UX**
+- Silent autosave (no more noise)
+- Clean .rshrc output (removed empty lines)
+- Auto-correct skips shell keywords
+- Backward compatible with quoted syntax
+
+### ✓ **DOCUMENTATION**
+- All examples updated to quote-less syntax
+- :help updated with Ctrl-G and new features
+- :info updated with v3.3 section
+- README.md updated with new syntax
+- Backward compatibility clearly documented
+
+---
+
 ## v3.2.0 - Plugin System (2025-10-22)
 
 ### ✓ **PLUGIN ARCHITECTURE**

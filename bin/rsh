@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.2.0" # Plugin system: Extensible architecture with lifecycle hooks, completions, commands, and plugin management
+@version    = "3.3.0" # Quote-less syntax: Simplified colon commands without quotes for cleaner UX
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -150,6 +150,7 @@ begin # Initialization
   @plugins = []                           # Loaded plugin instances
   @plugin_disabled = []                   # List of disabled plugin names
   @plugin_commands = {}                   # Commands added by plugins
+  @validation_rules = []                  # Custom validation rules
   # Built-in rsh commands are called with : prefix, so no need for separate tracking
   Dir.mkdir(Dir.home + '/.rsh') unless Dir.exist?(Dir.home + '/.rsh')
   Dir.mkdir(@session_dir) unless Dir.exist?(@session_dir)
@@ -161,7 +162,7 @@ end
 # HELP TEXT
 @info = <<~INFO
 
-  Hello #{@user}, welcome to rsh v3.2 - the Ruby SHell.
+  Hello #{@user}, welcome to rsh v3.3 - the Ruby SHell.
 
   rsh does not attempt to compete with the grand old shells like bash and zsh.
   It serves the specific needs and wants of its author. If you like it, then feel free
@@ -187,17 +188,22 @@ end
   * Syntax validation - Pre-execution warnings for dangerous or malformed commands
   * Unified command syntax - :nick, :gnick, :bm all work the same way (list/create/delete)
 
-  NEW in v3.2:
+  NEW in v3.3:
+  * Quote-less syntax - No more quotes! Use :nick la = ls -la instead of :nick "la = ls -la"
+  * Parametrized nicks - :nick gp = git push origin {{branch}}, then: gp branch=main
+  * Ctrl-G multi-line edit - Press Ctrl-G to edit command in $EDITOR
+  * Custom validation - :validate rm -rf / = block prevents dangerous commands
+  * Shell script support - for/while/if loops work with full bash syntax
+  * Simplified - Removed :template, everything now in :nick
+  * Backward compatible - Old quote syntax still works
+
+  v3.2 Features:
   * Plugin system - Extensible architecture for custom commands, completions, and hooks
-  * Lifecycle hooks - on_startup, on_command_before, on_command_after, on_prompt
-  * Plugin management - :plugins list/reload/enable/disable/info
-  * Example plugins - git_prompt, command_logger, kubectl_completion included
-  * Auto-correct typos - :config "auto_correct" "on" automatically fixes gti → closest match
-  * Command timing alerts - :config "slow_command_threshold" "5" warns on slow commands
-  * Inline calculator - :calc 2 + 2, :calc "Math.sqrt(16)", full Ruby Math library
+  * Auto-correct typos - :config auto_correct on (with confirmation prompt)
+  * Command timing alerts - :config slow_command_threshold 5 warns on slow commands
+  * Inline calculator - :calc 2 + 2, :calc "Math::PI", full Ruby Math library
   * Enhanced history - !!, !-2, !5:7 for repeat last, nth-to-last, and chaining
   * Stats visualization - :stats --graph for colorful ASCII bar charts
-  * See PLUGIN_GUIDE.md for complete plugin development documentation
 
   v3.1 Features:
   * Multiple named sessions - :save_session "project" and :load_session "project"
@@ -355,8 +361,23 @@ def getstr # A custom Readline-like function
     chr = getchr
     puts "DEBUG: Got char: '#{chr}' (length: #{chr.length})" if ENV['RSH_DEBUG']
     case chr
-    when 'C-G', 'C-C'
-      @history[0] = "" 
+    when 'C-G'   # Ctrl-G opens command in $EDITOR
+      temp_file = "/tmp/rsh_edit_#{Process.pid}.tmp"
+      File.write(temp_file, @history[0] || "")
+      system("#{ENV['EDITOR'] || 'vi'} #{temp_file}")
+      if File.exist?(temp_file)
+        edited = File.read(temp_file).strip
+        # Convert multi-line to single line with proper separators
+        if edited.include?("\n")
+          # Join lines with semicolons, preserving quoted strings
+          edited = edited.split("\n").map(&:strip).reject(&:empty?).join('; ')
+        end
+        @history[0] = edited
+        @pos = edited.length
+        File.delete(temp_file)
+      end
+    when 'C-C'
+      @history[0] = ""
       @pos = 0
     when 'C-E'   # Ctrl-C exits gracefully but without updating .rshrc
       print "\n"
@@ -620,7 +641,7 @@ def tab(type)
         :nick :gnick :bm :bookmark :stats :defun :defun?
         :history :rmhistory :jobs :fg :bg
         :save_session :load_session :list_sessions :delete_session :rmsession
-        :config :env :theme :plugins :calc
+        :config :env :theme :plugins :calc :validate
         :info :version :help
       ]
       search_str = @tabstr[1..-1] || ""  # Remove leading :
@@ -1058,6 +1079,8 @@ def rshrc # Write updates to .rshrc
   conf += "@slow_command_threshold = #{@slow_command_threshold}\n" if @slow_command_threshold && @slow_command_threshold > 0
   conf.sub!(/^@plugin_disabled.*(\n|$)/, "")
   conf += "@plugin_disabled = #{@plugin_disabled}\n" unless @plugin_disabled.empty?
+  conf.sub!(/^@validation_rules.*(\n|$)/, "")
+  conf += "@validation_rules = #{@validation_rules}\n" unless @validation_rules.empty?
   # Only write @cmd_completions if user has customized it
   unless conf =~ /^@cmd_completions\s*=/
     # Don't write default completions to avoid cluttering .rshrc
@@ -1072,7 +1095,7 @@ def rshrc # Write updates to .rshrc
     puts "Warning: Error saving history: #{e.message}"
   end
   File.write(Dir.home+'/.rshrc', conf)
-  puts "\n.rshrc updated"
+  puts ".rshrc updated"
 end
 
 # RSH FUNCTIONS
@@ -1095,23 +1118,24 @@ def help
   left_col << "UP/DOWN         Navigate history"
   left_col << "TAB             Tab complete"
   left_col << "Shift-TAB       Search history"
+  left_col << "Ctrl-G          Edit in $EDITOR"
   left_col << "Ctrl-Y          Copy to clipboard"
   left_col << "Ctrl-D          Exit + save .rshrc"
   left_col << "Ctrl-E          Exit without save"
   left_col << "Ctrl-L          Clear screen"
   left_col << "Ctrl-Z          Suspend job"
-  left_col << "Ctrl-C/G        Clear line"
+  left_col << "Ctrl-C          Clear line"
   left_col << "Ctrl-K          Delete history item"
   left_col << "Ctrl-U          Clear line"
   left_col << "Ctrl-W          Delete previous word"
   left_col << ""
   left_col << "SPECIAL COMMANDS:".c(@c_prompt).b
-  left_col << ":nick 'll = ls -l'  Command alias"
-  left_col << ":gnick 'h = /home'  General alias"
+  left_col << ":nick ll = ls -l    Command alias"
+  left_col << ":gnick h = /home    General alias"
   left_col << ":nick               List nicks"
   left_col << ":gnick              List gnicks"
-  left_col << ":nick '-name'       Delete nick"
-  left_col << ":gnick '-name'      Delete gnick"
+  left_col << ":nick -name         Delete nick"
+  left_col << ":gnick -name        Delete gnick"
   left_col << ":history            Show history"
   left_col << ":rmhistory          Clear history"
   left_col << ":info               About rsh"
@@ -1120,9 +1144,9 @@ def help
   
   # Right column content
   right_col << "RUBY FUNCTIONS:".c(@c_prompt).b
-  right_col << ":defun 'f(x) = x*2' Define function"
+  right_col << ":defun f(x) = x*2   Define function"
   right_col << ":defun?             List functions"
-  right_col << ":defun '-f'         Remove function"
+  right_col << ":defun -f           Remove function"
   right_col << "Call as: f 5        (returns 10)"
   right_col << ""
   right_col << "JOB CONTROL:".c(@c_prompt).b
@@ -1131,28 +1155,30 @@ def help
   right_col << ":fg [id]            Foreground job"
   right_col << ":bg [id]            Resume in bg"
   right_col << ""
-  right_col << "v3.2 NEW FEATURES:".c(@c_prompt).b
+  right_col << "v3.3 NEW FEATURES:".c(@c_prompt).b
+  right_col << "No quotes!          :nick la = ls -la"
+  right_col << ":nick gp={{branch}} Parametrized"
+  right_col << ":validate pat = act Safety rules"
+  right_col << "Ctrl-G              Edit in \$EDITOR"
+  right_col << "for i in {1..5}     Shell scripts"
+  right_col << ""
+  right_col << "v3.2 FEATURES:".c(@c_prompt).b
   right_col << ":plugins [cmd]      Plugin system"
-  right_col << ":stats --graph      Visual bar charts"
-  right_col << ":calc 2 + 2         Ruby calculator"
-  right_col << "!!, !-2, !5:7       History repeat/chain"
-  right_col << ":config auto_correct Auto-fix (w/confirm)"
-  right_col << ":config slow_cmd... Slow alerts"
+  right_col << ":stats --graph      Visual charts"
+  right_col << ":calc 2 + 2         Calculator"
+  right_col << "!!, !-2, !5:7       History chain"
   right_col << ""
   right_col << "PLUGIN SYSTEM:".c(@c_prompt).b
   right_col << ":plugins            List all"
   right_col << ":plugins reload     Reload"
   right_col << ":plugins disable nm Disable"
-  right_col << ":plugins info nm    Details"
   right_col << ""
-  right_col << "v3.0/3.1 FEATURES:".c(@c_prompt).b
-  right_col << ":stats --clear      Clear stats"
-  right_col << ":stats --csv|--json Export stats"
-  right_col << ":bm \"name\"          Bookmarks"
-  right_col << ":save_session [nm]  Sessions"
-  right_col << ":theme [name]       Themes"
-  right_col << ":config [set val]   Config"
-  right_col << ":env [VAR]          Env vars"
+  right_col << "MORE FEATURES:".c(@c_prompt).b
+  right_col << ":config auto_correct Auto-fix"
+  right_col << ":bm name path #tags Bookmarks"
+  right_col << ":save_session nm    Sessions"
+  right_col << ":theme name         Themes"
+  right_col << ":env VAR            Env vars"
   right_col << ""
   right_col << "INTEGRATIONS:".c(@c_prompt).b
   right_col << "r                   Launch rtfm"
@@ -1526,11 +1552,8 @@ def export_stats_csv(filename = 'rsh_stats.csv') # Export stats to CSV
     puts "Error exporting stats: #{e.message}"
   end
 end
-def bm(*args) # Enhanced bookmark management with tags
-  # Handle variadic arguments
-  arg_str = args.join(' ')
-
-  if args.empty?
+def bm(arg_str = nil) # Enhanced bookmark management with tags
+  if arg_str.nil? || arg_str.empty?
     # List all bookmarks
     if @bookmarks.empty?
       puts "No bookmarks defined. Use :bm \"name\" to bookmark current directory"
@@ -1543,15 +1566,16 @@ def bm(*args) # Enhanced bookmark management with tags
       puts "  #{name.c(@c_nick)} → #{path}#{tags.c(@c_stamp)}"
     end
     puts
-  elsif args[0] == '--export'
+  elsif arg_str =~ /^--export\s*(.*)/
     # Export bookmarks to file
-    filename = args[1] || 'bookmarks.json'
+    filename = $1.strip
+    filename = 'bookmarks.json' if filename.empty?
     export_bookmarks(filename)
-  elsif args[0] == '--import'
+  elsif arg_str =~ /^--import\s+(.*)/
     # Import bookmarks from file
-    filename = args[1]
+    filename = $1.strip
     import_bookmarks(filename) if filename
-  elsif args[0] == '--stats'
+  elsif arg_str == '--stats'
     # Show bookmark statistics
     bookmark_stats
   elsif arg_str =~ /^(\w+)\s+(.+)$/
@@ -1603,8 +1627,8 @@ def bm(*args) # Enhanced bookmark management with tags
     rshrc
   end
 end
-def bookmark(*args) # Alias for bm
-  bm(*args)
+def bookmark(arg_str = nil) # Alias for bm
+  bm(arg_str)
 end
 def export_bookmarks(filename = 'bookmarks.json') # Export bookmarks to JSON
   begin
@@ -1669,6 +1693,7 @@ def bookmark_stats # Show bookmark usage statistics
 end
 def save_session(*args) # Save current session state
   session_name = args[0] || 'default'
+  silent = args[1] == :silent  # Optional silent flag
   session_path = @session_dir + "/#{session_name}.json"
 
   session = {
@@ -1682,9 +1707,9 @@ def save_session(*args) # Save current session state
   begin
     require 'json'
     File.write(session_path, JSON.pretty_generate(session))
-    puts "Session '#{session_name}' saved to #{session_path}"
+    puts "Session '#{session_name}' saved to #{session_path}" unless silent
   rescue => e
-    puts "Error saving session: #{e.message}"
+    puts "Error saving session: #{e.message}" unless silent
   end
 end
 def load_session(*args) # Restore previous session
@@ -2002,13 +2027,17 @@ def validate_command(cmd) # Syntax validation before execution
   return nil if cmd.nil? || cmd.empty?
   warnings = []
 
+  # Apply custom validation rules first
+  custom_warnings = apply_validation_rules(cmd)
+  warnings.concat(custom_warnings) if custom_warnings.any?
+
   # Check for common mistakes
   warnings << "Unmatched quotes" if cmd.count("'").odd? || cmd.count('"').odd?
   warnings << "Unmatched parentheses" if cmd.count("(") != cmd.count(")")
   warnings << "Unmatched brackets" if cmd.count("[") != cmd.count("]")
   warnings << "Unmatched braces" if cmd.count("{") != cmd.count("}")
 
-  # Check for potentially dangerous patterns
+  # Check for potentially dangerous patterns (unless user has custom rules)
   warnings << "WARNING: Recursive rm detected" if cmd =~ /rm\s+.*-r.*\//
   warnings << "WARNING: Force flag without path" if cmd =~ /rm\s+-[rf]+\s*$/
   warnings << "WARNING: Sudo with redirection" if cmd =~ /sudo.*>/
@@ -2060,12 +2089,78 @@ def calc(*args) # Inline calculator using Ruby's Math library
     puts "Error evaluating expression: #{e.message}"
   end
 end
+def validate(rule_str = nil) # Custom validation rule management
+  if rule_str.nil? || rule_str.empty?
+    # List all validation rules
+    if @validation_rules.empty?
+      puts "\nNo validation rules defined"
+      puts "Usage: :validate pattern = action"
+      puts "Actions: block, confirm, warn, log"
+      return
+    end
+    puts "\n  Validation Rules:".c(@c_prompt).b
+    @validation_rules.each_with_index do |rule, i|
+      puts "  #{i+1}. #{rule[:pattern].inspect} → #{rule[:action]}"
+    end
+    puts
+  elsif rule_str =~ /^-(\d+)$/
+    # Delete rule by index
+    index = $1.to_i - 1
+    if index >= 0 && index < @validation_rules.length
+      rule = @validation_rules.delete_at(index)
+      puts "Validation rule deleted: #{rule[:pattern]}"
+      rshrc
+    else
+      puts "Invalid rule index: #{$1}"
+    end
+  elsif rule_str =~ /^(.+?)\s*=\s*(block|confirm|warn|log)$/
+    # Add validation rule
+    pattern = $1.strip
+    action = $2.strip
+    @validation_rules << {pattern: pattern, action: action}
+    puts "Validation rule added: #{pattern} → #{action}"
+    rshrc
+  else
+    puts "Usage: :validate pattern = action"
+    puts "Example: :validate rm -rf / = block"
+    puts "Actions: block (prevent), confirm (ask), warn (show), log (record)"
+  end
+end
+def apply_validation_rules(cmd) # Apply custom validation rules
+  return [] if @validation_rules.nil? || @validation_rules.empty?
+
+  warnings = []
+
+  @validation_rules.each do |rule|
+    if cmd =~ /#{rule[:pattern]}/
+      case rule[:action]
+      when 'block'
+        warnings << "BLOCKED by rule: #{rule[:pattern]}"
+      when 'confirm'
+        warnings << "CONFIRM required: #{rule[:pattern]}"
+      when 'warn'
+        warnings << "Warning: Matches rule '#{rule[:pattern]}'"
+      when 'log'
+        File.write("#{ENV['HOME']}/.rsh_validation.log",
+                   "#{Time.now}: #{cmd} (matched: #{rule[:pattern]})\n",
+                   mode: 'a')
+      end
+    end
+  end
+
+  warnings
+end
 def apply_auto_correct(cmd) # Apply auto-correction to command
   return cmd unless @auto_correct
   return cmd if cmd =~ /^:/  # Don't auto-correct colon commands
   return cmd unless cmd =~ /^(\w+)/
 
   first_cmd = $1
+
+  # Don't auto-correct shell keywords or shell scripts
+  shell_keywords = %w[for while if then else elif fi do done case esac function select until]
+  return cmd if shell_keywords.include?(first_cmd)
+  return cmd if cmd =~ /\b(for|while|if|case|function|until)\b/  # Skip shell scripts
 
   # Don't auto-correct if command exists
   return cmd if @exe.include?(first_cmd)
@@ -2370,6 +2465,7 @@ def load_rshrc_safe
     @plugin_disabled = [] unless @plugin_disabled.is_a?(Array)
     @plugins = [] unless @plugins.is_a?(Array)
     @plugin_commands = {} unless @plugin_commands.is_a?(Hash)
+    @validation_rules = [] unless @validation_rules.is_a?(Array)
 
     # Restore defuns from .rshrc
     if @defuns && !@defuns.empty?
@@ -2511,6 +2607,7 @@ def load_defaults
   @plugin_disabled ||= []
   @plugins ||= []
   @plugin_commands ||= {}
+  @validation_rules ||= []
   puts "Loaded with default configuration."
 end
 
@@ -2609,7 +2706,7 @@ loop do
     if @session_autosave && @session_autosave > 0
       current_time = Time.now.to_i
       if (current_time - @session_last_save) >= @session_autosave
-        save_session('autosave')
+        save_session('autosave', :silent)
         @session_last_save = current_time
       end
     end
@@ -2687,8 +2784,46 @@ loop do
     end
     if @cmd.match(/^\s*:/) # Ruby commands are prefixed with ":"
       begin
-        eval(@cmd[1..-1])
-      #rescue StandardError => err
+        cmd_line = @cmd[1..-1].strip
+
+        # Extract command name and arguments
+        if cmd_line =~ /^(\w+\??)(.*)$/
+          cmd_name = $1
+          cmd_args_raw = $2.strip
+
+          # Commands that parse their own args (need full string)
+          # nick/gnick parse "name = value"
+          # defun parses "name(args) = body"
+          # bm parses "name path #tags" or "-name" or "?tag" or "--export file"
+          # validate parses "pattern = action"
+          single_string_cmds = %w[nick gnick defun bm bookmark validate]
+
+          # List of all known rsh commands (since respond_to? doesn't work for top-level methods)
+          known_commands = %w[nick gnick defun defun? bm bookmark stats calc config env theme plugins
+                              save_session load_session list_sessions delete_session rmsession
+                              validate
+                              history rmhistory jobs fg bg dirs help info version]
+
+          # Try to call as rsh method
+          if known_commands.include?(cmd_name)
+            if cmd_args_raw.empty?
+              send(cmd_name.to_sym)
+            elsif single_string_cmds.include?(cmd_name)
+              # Pass entire args string for commands that parse it themselves
+              send(cmd_name.to_sym, cmd_args_raw)
+            else
+              # Split args for variadic functions
+              args = cmd_args_raw.split(/\s+/)
+              send(cmd_name.to_sym, *args)
+            end
+          else
+            # Fallback to eval for arbitrary Ruby (like :puts 2+2)
+            eval(cmd_line)
+          end
+        else
+          # Fallback to eval
+          eval(cmd_line)
+        end
       rescue Exception => err
         puts "\n#{err}"
       end
@@ -2723,20 +2858,48 @@ loop do
           execute_conditional(@cmd)
           next
         end
-        # Expand brace expansion {a,b,c}
-        @cmd = expand_braces(@cmd)
-        # Expand command substitution $(command) and backticks
-        @cmd = @cmd.gsub(/\$\(([^)]+)\)/) { `#{$1}`.chomp }
-        @cmd = @cmd.gsub(/`([^`]+)`/) { `#{$1}`.chomp }
-        # Expand environment variables and exit status
-        @cmd = @cmd.gsub(/\$\?/) { @last_exit.to_s }
-        @cmd = @cmd.gsub(/\$(\w+)|\$\{(\w+)\}/) { ENV[$1 || $2] || '' }
-        # Expand tilde
+        # Detect shell scripting constructs - skip expansions if found
+        is_shell_script = !(@cmd =~ /\b(for|while|if|case|function|until)\b/).nil?
+
+        unless is_shell_script
+          # Expand brace expansion {a,b,c}
+          @cmd = expand_braces(@cmd)
+          # Expand command substitution $(command) and backticks
+          @cmd = @cmd.gsub(/\$\(([^)]+)\)/) { `#{$1}`.chomp }
+          @cmd = @cmd.gsub(/`([^`]+)`/) { `#{$1}`.chomp }
+          # Expand environment variables and exit status
+          @cmd = @cmd.gsub(/\$\?/) { @last_exit.to_s }
+          @cmd = @cmd.gsub(/\$(\w+)|\$\{(\w+)\}/) { ENV[$1 || $2] || '' }
+        end
+        # Always expand tilde
         @cmd = @cmd.gsub(/~/, Dir.home)
-        ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
-        @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
-        ga = @gnick.transform_keys {|k| /\b(?<!-)#{Regexp.escape k}\b/}
-        @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
+        # Skip nick/gnick substitution for shell scripts
+        unless is_shell_script
+          # Check for parametrized nick BEFORE substitution
+          cmd_parts_before = @cmd.split(/\s+/)
+          first_cmd = cmd_parts_before[0]
+          used_param_nick = first_cmd && @nick[first_cmd] && @nick[first_cmd].include?('{{')
+
+          # Do nick/gnick substitution
+          ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
+          @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
+          ga = @gnick.transform_keys {|k| /\b(?<!-)#{Regexp.escape k}\b/}
+          @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
+
+          # Expand placeholders if parametrized nick was used
+          if used_param_nick
+            params = {}
+            cmd_parts_before[1..].each do |part|
+              if part =~ /^(\w+)=(.+)$/
+                params[$1] = $2
+              end
+            end
+            # Replace placeholders
+            params.each { |k, v| @cmd.gsub!(/\{\{#{k}\}\}/, v) }
+            # Remove key=value parameters from command
+            @cmd = @cmd.split(/\s+/).reject { |p| p =~ /^\w+=/ }.join(' ')
+          end
+        end
         @cmd = "~" if @cmd == "cd"
         @cmd.sub!(/^cd (\S*).*/, '\1')
         @cmd = Dir.home if @cmd == "~"
@@ -2785,8 +2948,16 @@ loop do
               # Validate command after auto-correction
               warnings = validate_command(@cmd)
               if warnings && !warnings.empty?
+                # Check for BLOCKED commands
+                if warnings.any? { |w| w.start_with?("BLOCKED") }
+                  warnings.select { |w| w.start_with?("BLOCKED") }.each { |w| puts "#{w}".c(196) }
+                  puts "Command execution blocked by validation rule"
+                  next
+                end
+
                 # Show non-auto-correct warnings
-                warnings.reject { |w| w.start_with?("AUTO-CORRECTING:") }.each { |w| puts "#{w}".c(196) }
+                warnings.reject { |w| w.start_with?("AUTO-CORRECTING:") || w.start_with?("CONFIRM") }.each { |w| puts "#{w}".c(196) }
+
                 # Show auto-correct and ask for confirmation
                 auto_correct_warnings = warnings.select { |w| w.start_with?("AUTO-CORRECTING:") }
                 if auto_correct_warnings.any?
@@ -2798,7 +2969,19 @@ loop do
                     next
                   end
                 end
-                # For critical warnings, ask for confirmation
+
+                # For CONFIRM validation rules
+                if warnings.any? { |w| w.start_with?("CONFIRM") }
+                  warnings.select { |w| w.start_with?("CONFIRM") }.each { |w| puts "#{w}".c(214) }
+                  print "Confirm execution? (y/N): "
+                  response = $stdin.gets.chomp
+                  unless response.downcase == 'y'
+                    puts "Command cancelled"
+                    next
+                  end
+                end
+
+                # For other critical warnings
                 if warnings.any? { |w| w.start_with?("WARNING:") }
                   print "Continue anyway? (y/N): "
                   response = $stdin.gets.chomp
@@ -2829,6 +3012,9 @@ loop do
               # Start timing
               start_time = Time.now
 
+              # Detect if command needs bash (for loops, etc.)
+              needs_bash = !(@cmd =~ /\b(for|while|if|case|function|until)\b/).nil? || @cmd.include?(';')
+
               # Handle background jobs
               if @cmd.end_with?(' &')
                 @cmd = @cmd[0..-3]  # Remove the &
@@ -2837,13 +3023,21 @@ loop do
                 if @cmd.include?('|') || @cmd.include?('>') || @cmd.include?('<')
                   pid = spawn(@cmd, pgroup: true)
                 else
-                  pid = spawn(@cmd)
+                  if needs_bash
+                    pid = spawn("bash", "-c", @cmd)
+                  else
+                    pid = spawn(@cmd)
+                  end
                 end
                 @jobs[@job_id] = {pid: pid, cmd: @cmd, status: :running}
                 puts "[#{@job_id}] #{pid} #{@cmd}"
               else
                 # Better handling of pipes and redirections
-                @current_pid = spawn(@cmd)
+                if needs_bash
+                  @current_pid = spawn("bash", "-c", @cmd)
+                else
+                  @current_pid = spawn(@cmd)
+                end
                 Process.wait(@current_pid)
                 @last_exit = $?.exitstatus
                 @current_pid = nil
