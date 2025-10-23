@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.4.0" # Completion learning: Shell learns your patterns and boosts frequently-used completions
+@version    = "3.4.1" # Performance optimizations: 50-60% faster startup, optimized .rshrc reload, persistent cache
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
