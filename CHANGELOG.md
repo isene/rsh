@@ -7,6 +7,7 @@
 - `:defun -name` removes a function without quotes (was `:defun '-name'`)
 - Cleaner, more intuitive command syntax
 - `:defun?` kept as alias for backwards compatibility
+- Updated `:help` to show all operations for :nick and :defun (create/list/delete)
 
 ---
 
