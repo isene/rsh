@@ -1,5 +1,15 @@
 # rsh Changelog
 
+## v3.4.2 - Improved defun Syntax (2025-10-23)
+
+### ✓ **IMPROVED SYNTAX**
+- `:defun` now lists all defined functions (was `:defun?`)
+- `:defun -name` removes a function without quotes (was `:defun '-name'`)
+- Cleaner, more intuitive command syntax
+- `:defun?` kept as alias for backwards compatibility
+
+---
+
 ## v3.4.1 - Performance & Documentation (2025-10-23)
 
 ### ✓ **PERFORMANCE IMPROVEMENTS**

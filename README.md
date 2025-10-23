@@ -112,7 +112,7 @@ gp branch=main
 * **Define Ruby functions as shell commands**: `:defun 'weather(*args) = system("curl -s wttr.in/#{args[0] || \"oslo\"}")'`
 * **Call like any shell command**: `weather london`
 * **Full Ruby power**: Access to Ruby stdlib, file operations, JSON parsing, web requests, etc.
-* **Function management**: `:defun?` to list, `:defun '-name'` to remove
+* **Function management**: `:defun` to list, `:defun -name` to remove
 * **Syntax highlighting**: Ruby functions highlighted in bold
 
 ## Advanced Shell Features
@@ -138,7 +138,7 @@ Special commands:
 * `:history` will list the command history, while `:rmhistory` will delete the history
 * `:jobs` will list background jobs, `:fg [job_id]` brings jobs to foreground, `:bg [job_id]` resumes stopped jobs
 * `:defun func(args) = code` defines Ruby functions callable as shell commands (persistent!)
-* `:defun?` lists all user-defined functions, `:defun -func` removes functions
+* `:defun` lists all user-defined functions, `:defun -func` removes functions
 * `:stats` shows command execution statistics, `:stats --graph` for visual charts, `:stats --clear` to reset
 * `:bm name` or `:bookmark name` bookmark current directory, `:bm name path #tags` with tags
 * `:bm` lists all bookmarks, just type bookmark name to jump (e.g., `work`)
@@ -309,8 +309,8 @@ weather london
 
 ### Function Management
 ```bash
-:defun?           # List all defined functions
-:defun '-myls'    # Remove a function
+:defun            # List all defined functions
+:defun -myls      # Remove a function
 ```
 
 Ruby functions have access to:

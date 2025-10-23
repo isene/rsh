@@ -1415,10 +1415,23 @@ def bg(job_id = nil)
     puts "Job #{job_id} no longer exists"
   end
 end
-def defun(func_def)  # Define a Ruby function like: `:defun "myls(*args) = Dir.glob('*').each {|f| puts f}"`
-  if func_def.match(/^\s*-/)
+def defun(func_def = nil)  # Define a Ruby function like: `:defun myls(*args) = Dir.glob('*').each {|f| puts f}`
+  if func_def.nil? || func_def.strip.empty?
+    # List all defined functions
+    puts "User-defined Ruby functions:"
+    all_methods = singleton_class.instance_methods(false)
+    excluded = [:defun, :defun?, :execute_conditional, :expand_braces]
+    methods = all_methods - excluded
+    if methods.empty?
+      puts "  (none defined)"
+    else
+      methods.each do |method|
+        puts "  #{method}"
+      end
+    end
+  elsif func_def.match(/^\s*-/)
     # Remove function
-    func_name = func_def.sub(/^\s*-/, '')
+    func_name = func_def.sub(/^\s*-/, '').strip
     if self.respond_to?(func_name)
       singleton_class.remove_method(func_name.to_sym)
       @defuns.delete(func_name)
