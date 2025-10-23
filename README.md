@@ -19,93 +19,96 @@ Or simply `gem install ruby-shell`.
 
 # Features
 
-## Core Shell Features
-* Aliases (called nicks in rsh) - both for commands and general nicks
-* Syntax highlighting, matching nicks, system commands and valid dirs/files
-* Tab completions for nicks, system commands, command switches and dirs/files
-* Tab completion presents matches in a list to pick from
-* When you start to write a command, rsh will suggest the first match in the history and present that in "toned down" letters - press the arrow right key to accept the suggestion.
-* Writing a partial command and pressing `UP` will search history for matches.  Go down/up in the list and press `TAB` or `ENTER` to accept, `Ctrl-g` or `Ctrl-c` to discard
-* History with editing, search and repeat a history command (with `!`)
-* Config file (.rshrc) updates on exit (with Ctrl-d) or not (with Ctrl-e)
-* Set of simple rsh specific commands like nick, nick?, history and rmhistory
-* rsh specific commands and full set of Ruby commands available via :<command>
-* All colors are themeable in .rshrc (see github link for possibilities)
-* Copy current command line to primary selection (paste w/middle button) with `Ctrl-y`
+## Key Features
 
-## NEW in v3.4.0 - Intelligent Completion Learning ⭐⭐
-* **Smart TAB Completion**: Shell learns which completions you use most and ranks them higher
-* **Context-Aware Learning**: Separate learning for git, ls, docker, and all other commands
-* **Completion Statistics**: `:completion_stats` shows learned patterns with visual charts
-* **Manageable**: `:config completion_learning on|off`, `:completion_reset` to clear data
-* **Persistent**: Learning data saves to .rshrc, works across sessions
-* **Works Everywhere**: Commands, switches, subcommands - all get smarter over time
+### Aliases (Nicks)
+**rsh uses "nicks" for aliases** - both simple command shortcuts and powerful parametrized templates:
 
-## v3.3.0 - Quote-less Syntax, Parametrized Nicks & More ⭐⭐⭐
-* **No More Quotes**: Simplified syntax - `:nick la = ls -la` instead of `:nick "la = ls -la"`
-* **Parametrized Nicks**: `:nick gp = git push origin {{branch}}` then use `gp branch=main`
-* **Ctrl-G Multi-line Edit**: Press Ctrl-G to edit command in $EDITOR for complex scripts
-* **Custom Validation Rules**: `:validate rm -rf / = block` prevents dangerous commands
-* **Shell Script Support**: for/while/if loops work with full bash syntax
-* **Cleaner Commands**: `:config auto_correct on`, `:bm work /tmp #dev`, `:theme dracula`
-* **Simplified Architecture**: Removed :template (merged into :nick for simplicity)
-* **Backward Compatible**: Old quote syntax still works for existing .rshrc files
-* **Better UX**: Less typing, more powerful, feels more natural
+```bash
+# Simple aliases
+:nick la = ls -la
+:nick gs = git status
 
-## v3.2.0 - Plugin System & Productivity ⭐⭐⭐
-* **Plugin Architecture**: Extensible plugin system with lifecycle hooks and extension points
-* **Lifecycle Hooks**: on_startup, on_command_before, on_command_after, on_prompt
-* **Extension Points**: add_completions (TAB completion), add_commands (custom commands)
-* **Plugin Management**: `:plugins` list/reload/enable/disable/info commands
-* **Auto-loading**: Plugins in `~/.rsh/plugins/` load automatically on startup
-* **Safe Execution**: Isolated plugin execution with error handling, no shell crashes
-* **Example Plugins**: git_prompt (branch in prompt), command_logger (audit log), kubectl_completion (k8s shortcuts)
-* **Auto-correct Typos**: `:config "auto_correct", "on"` with user confirmation (Y/n) before applying
-* **Command Timing Alerts**: `:config "slow_command_threshold", "5"` warns on commands > 5 seconds
-* **Inline Calculator**: `:calc 2 + 2`, `:calc "Math::PI"` - full Ruby Math library support
-* **Enhanced History**: `!!` (last), `!-2` (2nd to last), `!5:7` (chain commands 5-7)
-* **Stats Visualization**: `:stats --graph` for colorful ASCII bar charts with intensity colors
-* **Documentation**: Complete PLUGIN_GUIDE.md with API reference and examples
+# Parametrized nicks (templates with {{placeholders}})
+:nick gp = git push origin {{branch}}
+gp branch=main              # Executes: git push origin main
 
-## v3.1.0 - Quick Wins & Polish ⭐
-* **Multiple Named Sessions**: Save/load different sessions - `:save_session "project"`, `:load_session "project"`
-* **Stats Export**: Export analytics to CSV/JSON - `:stats --csv` or `:stats --json`
-* **Session Auto-save**: Set `@session_autosave = 300` in .rshrc for automatic 5-minute saves
-* **Bookmark Import/Export**: Share bookmarks - `:bm --export bookmarks.json`, `:bm --import bookmarks.json`
-* **Bookmark Statistics**: See usage patterns - `:bm --stats` shows tag distribution and analytics
-* **Color Themes**: 6 preset themes - `:theme solarized|dracula|gruvbox|nord|monokai|default`
-* **Config Management**: `:config` shows/sets history_dedup, session_autosave, completion settings
-* **Environment Variables**: `:env` lists/sets/exports environment variables
-* **Bookmark TAB Completion**: Bookmarks appear in TAB completion alongside commands
-* **List Sessions**: `:list_sessions` shows all saved sessions with timestamps and paths
+:nick deploy = ssh {{user}}@{{host}} 'systemctl restart {{app}}'
+deploy user=admin host=prod app=api
 
-## v3.0.0 - Major Feature Release ⭐⭐⭐
-* **Persistent Ruby Functions**: defun functions now save to .rshrc and persist across sessions
-* **Smart Command Suggestions**: Typo detection with "Did you mean...?" suggestions using Levenshtein distance
-* **Command Analytics**: New `:stats` command shows usage statistics, performance metrics, and most-used commands
-* **Switch Completion Caching**: Command switches from --help are cached for instant completion
-* **Enhanced Bookmarks**: Bookmark directories with tags - `:bookmark name path #tag1,tag2`
-* **Session Management**: Save and restore entire shell sessions with `:save_session` and `:load_session`
-* **Syntax Validation**: Pre-execution warnings for common mistakes, dangerous commands, and typos
-* **Option Value Completion**: TAB completion for option values like `--format=<TAB>` → json, yaml, xml
-* **Command Performance Tracking**: Automatically tracks execution time and shows slowest commands
+# List and manage
+:nick                       # List all nicks
+:nick -la                   # Delete a nick
+```
 
-## AI Integration (v2.9.0) ⭐
-* **AI-powered command assistance**: Get help with commands using natural language
-* **`@ <question>`**: Ask questions and get AI-generated text responses
-* **`@@ <request>`**: Describe what you want to do, and AI suggests the command
-* **Smart command suggestion**: AI suggestions appear directly on the command line, ready to execute
-* **Local AI support**: Works with Ollama for privacy-focused local AI
-* **External AI support**: Configure OpenAI or other providers via `.rshrc`
-* **Syntax highlighting**: @ and @@ commands are highlighted in blue
+### Intelligence & Learning
+* **Completion Learning**: Shell learns which TAB completions you use and ranks them higher
+* **Smart Suggestions**: "Did you mean...?" for typos
+* **Auto-correct**: Optional auto-fix with confirmation
+* **Command Analytics**: `:stats` shows usage patterns and performance
 
-## Enhanced Help System & Nick Management (v2.8.0)
-* **Two-column help display**: Compact, organized help that fits on one screen
-* **New `:info` command**: Shows introduction and feature overview
-* **`:nickdel` and `:gnickdel`**: Intuitive commands to delete nicks and gnicks
-* **Improved help organization**: Quick reference for keyboard shortcuts, commands, and features
+### Productivity
+* **Command Recording**: `:record start name` → run commands → `:record stop` → `:replay name`
+* **Sessions**: Save/load entire shell state with bookmarks, history, and functions
+* **Bookmarks**: Tag directories and jump instantly
+* **Multi-line Editing**: Press Ctrl-G to edit in $EDITOR
+* **Shell Scripts**: Full bash support for for/while/if loops
 
-## Ruby Functions (v2.7.0)
+### Extensibility
+* **Plugin System**: Add custom commands, completions, and hooks
+* **Ruby Functions**: Define callable functions - `:defun hello(name) = puts "Hello, #{name}!"`
+* **Validation Rules**: `:validate rm -rf / = block` prevents dangerous commands
+* **6 Color Themes**: solarized, dracula, gruvbox, nord, monokai, default
+
+### Integrations
+* **AI Support**: @ for questions, @@ for command suggestions (Ollama or OpenAI)
+* **RTFM**: Launch file manager with `r`
+* **fzf**: Fuzzy finder with `f`
+* **XRPN**: Calculator with `= expression`
+
+### Tab Completion
+* Smart context-aware completion for git, apt, docker, systemctl, cargo, npm, gem
+* Command switches from --help
+* Option values (--format=json, --level=debug)
+* Learns your patterns and adapts
+
+### Core Shell
+* Syntax highlighting for nicks, commands, paths, bookmarks
+* History with search, edit, and repeat (!, !!, !-2, !5:7)
+* Job control (background jobs, suspend, resume)
+* Config file (.rshrc) updates on exit
+* All colors themeable
+
+---
+
+## Quick Start
+
+```bash
+# Install
+gem install ruby-shell
+
+# Run
+rsh
+
+# Create an alias
+:nick ll = ls -l
+ll
+
+# Create parametrized alias
+:nick gp = git push origin {{branch}}
+gp branch=main
+
+# Get help
+:help
+:info
+
+# See version and changelog
+:version
+```
+
+---
+
+## Latest Features (v3.4)
 * **Define Ruby functions as shell commands**: `:defun 'weather(*args) = system("curl -s wttr.in/#{args[0] || \"oslo\"}")'`
 * **Call like any shell command**: `weather london`
 * **Full Ruby power**: Access to Ruby stdlib, file operations, JSON parsing, web requests, etc.
