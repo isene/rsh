@@ -599,6 +599,9 @@ def tab(type)
         if @cmd_completions.key?(last_cmd) && cmd_parts.length == 1
           type = "cmd_subcommands"
           @current_cmd = last_cmd
+        # If we're completing after a command (not at start of line), show only files
+        elsif cmd_parts.length > 1 || (cmd_parts.length == 1 && @tabstr.empty?)
+          type = "files_dirs_only"
         end
       end
     end
@@ -663,6 +666,24 @@ def tab(type)
       fdir = @tabstr + "*"
       files = Dir.glob(fdir).reject { |f| Dir.exist?(f) }
       @tabarray = files
+    when "files_dirs_only"  # Show files and directories, but not commands
+      fdir = @tabstr + "*"
+      files = Dir.glob(fdir)
+      # Only show hidden files if tabstr starts with .
+      unless @tabstr.start_with?('.')
+        files.reject! { |f| File.basename(f).start_with?('.') }
+      end
+      files.map! do |e|
+        if e =~ /(?<!\\) /
+          e = e.sub(/(.*\/|^)(.*)/, '\1\'\2\'') unless e =~ /'/
+        end
+        Dir.exist?(e) ? e + "/" : e
+      end
+      # Separate directories and files for better ordering
+      dirs = files.select { |f| f.end_with?('/') }
+      files_only = files.reject { |f| f.end_with?('/') }
+      # Order: directories first, then files
+      @tabarray = dirs + files_only
     when "commands_only" # Only show executable commands
       ex = @exe.dup
       ex.prepend(*@nick.keys, *@gnick.keys)

@@ -9,6 +9,17 @@
 - `:defun?` kept as alias for backwards compatibility
 - Updated `:help` to show all operations for :nick and :defun (create/list/delete)
 
+### ✓ **TAB COMPLETION IMPROVEMENTS**
+- Commands only complete at start of line or after pipes/separators
+- After typing a command, TAB now prioritizes files/directories
+- Example: `convert <TAB>` shows image files first, not all commands
+- Smarter context-aware completion for better UX
+
+### ✓ **DOCUMENTATION**
+- Added Environment Variables section explaining `:env` commands
+- Clarified why `export VAR=value` doesn't work (subprocess limitation)
+- Show correct `:env set VAR value` syntax for persistent variables
+
 ---
 
 ## v3.4.1 - Performance & Documentation (2025-10-23)
