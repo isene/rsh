@@ -14,11 +14,27 @@
 - **Auto-complete**: `cd ..<TAB>` instantly completes to `cd ../`
 - **Regex fix**: Proper escaping for paths with special characters (dots, etc.)
 
+### ✓ **CONFIGURATION IMPROVEMENTS**
+- **Separated .rshrc and .rshstate files**
+- `.rshrc` - User-editable config (portable: prompt, nicks, bookmarks, defuns, settings)
+- `.rshstate` - Auto-managed runtime data (history, stats, cache, learning weights)
+- **Auto-migration**: Seamlessly migrates from old single-file format on first run
+- Prevents custom prompt/config from being wiped by auto-save
+- Makes .rshrc portable between machines
+- Safer, cleaner configuration management
+
+### ✓ **PERFORMANCE IMPROVEMENTS**
+- Eliminated system spawn for window title updates (~2-5ms per prompt)
+- Cached user/node info (~0.1ms per prompt)
+- Reuse Dir.pwd call (already cached as current_dir)
+- Symlink color detection added
+
 ### ✓ **DOCUMENTATION**
 - Added Environment Variables section explaining `:env` commands
 - Clarified why `export VAR=value` doesn't work (subprocess limitation)
 - Show correct `:env set VAR value` syntax for persistent variables
 - Closed GitHub issue #5 with documentation
+- Added performance directive to project CLAUDE.md
 
 ---
 

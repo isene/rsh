@@ -1233,13 +1233,18 @@ end
 def get_file_color(filename) # Get color for a file based on LS_COLORS
   return 7 unless @ls_colors  # Default to white if not initialized
 
+  # Remove quotes and trailing slash for checking
+  clean_name = filename.gsub(/['"]/, '').chomp('/')
+
+  # Check if it's a symlink (before directory check!)
+  if File.symlink?(clean_name)
+    return @ls_colors['ln'] || 14  # Symlinks get special color
+  end
+
   # Check if it's a directory
   if filename.end_with?('/')
     return @ls_colors['di'] || 33
   end
-
-  # Remove quotes and trailing slash for checking
-  clean_name = filename.gsub(/['"]/, '').chomp('/')
 
   # Check if file exists and is executable
   if File.exist?(clean_name) && File.executable?(clean_name) && !File.directory?(clean_name)
@@ -1338,21 +1343,19 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
     end
   end
 end
-def rshrc # Write updates to .rshrc
-  hist_clean
+def rshrc # Write user configuration to .rshrc (portable between machines)
+  hist_clean  # Clean history before saving
   if File.exist?(Dir.home+'/.rshrc')
     conf = File.read(Dir.home+'/.rshrc')
   else
     conf = ""
   end
+
+  # Only update user-editable items in .rshrc
   conf.sub!(/^@nick.*(\n|$)/, "")
   conf += "@nick = #{@nick}\n"
   conf.sub!(/^@gnick.*(\n|$)/, "")
   conf += "@gnick = #{@gnick}\n"
-  conf.sub!(/^@cmd_frequency.*(\n|$)/, "")
-  conf += "@cmd_frequency = #{@cmd_frequency}\n"
-  conf.sub!(/^@cmd_stats.*(\n|$)/, "")
-  conf += "@cmd_stats = #{@cmd_stats}\n" unless @cmd_stats.empty?
   conf.sub!(/^@bookmarks.*(\n|$)/, "")
   conf += "@bookmarks = #{@bookmarks}\n" unless @bookmarks.empty?
   conf.sub!(/^@defuns.*(\n|$)/, "")
@@ -1365,40 +1368,71 @@ def rshrc # Write updates to .rshrc
   conf += "@auto_correct = #{@auto_correct}\n" if @auto_correct
   conf.sub!(/^@slow_command_threshold.*(\n|$)/, "")
   conf += "@slow_command_threshold = #{@slow_command_threshold}\n" if @slow_command_threshold && @slow_command_threshold > 0
+  conf.sub!(/^@completion_learning.*(\n|$)/, "")
+  conf += "@completion_learning = #{@completion_learning}\n" unless @completion_learning
+  conf.sub!(/^@completion_show_metadata.*(\n|$)/, "")
+  conf += "@completion_show_metadata = #{@completion_show_metadata}\n" if @completion_show_metadata
   conf.sub!(/^@plugin_disabled.*(\n|$)/, "")
   conf += "@plugin_disabled = #{@plugin_disabled}\n" unless @plugin_disabled.empty?
   conf.sub!(/^@validation_rules.*(\n|$)/, "")
   conf += "@validation_rules = #{@validation_rules}\n" unless @validation_rules.empty?
-  conf.sub!(/^@completion_weights.*(\n|$)/, "")
-  conf += "@completion_weights = #{@completion_weights}\n" unless @completion_weights.empty?
-  conf.sub!(/^@completion_learning.*(\n|$)/, "")
-  conf += "@completion_learning = #{@completion_learning}\n" unless @completion_learning
-  conf.sub!(/^@recordings.*(\n|$)/, "")
-  conf += "@recordings = #{@recordings}\n" unless @recordings.empty?
+
+  File.write(Dir.home+'/.rshrc', conf)
+  rshstate  # Also save runtime state
+end
+def rshstate # Write runtime state to .rshstate (auto-managed, machine-specific)
+  state = ""
+
+  # Runtime data that changes frequently
+  state += "@cmd_frequency = #{@cmd_frequency}\n" unless @cmd_frequency.empty?
+  state += "@cmd_stats = #{@cmd_stats}\n" unless @cmd_stats.empty?
+  state += "@completion_weights = #{@completion_weights}\n" unless @completion_weights.empty?
+  state += "@recordings = #{@recordings}\n" unless @recordings.empty?
+
   # Persist executable cache for faster startup
   if @exe && @exe.length > 100
-    conf.sub!(/^@exe_cache.*(\n|$)/, "")
-    conf += "@exe_cache = #{@exe.inspect}\n"
-    conf.sub!(/^@exe_cache_path.*(\n|$)/, "")
-    conf += "@exe_cache_path = #{ENV['PATH'].inspect}\n"
-    conf.sub!(/^@exe_cache_time.*(\n|$)/, "")
-    conf += "@exe_cache_time = #{Time.now.to_i}\n"
+    state += "@exe_cache = #{@exe.inspect}\n"
+    state += "@exe_cache_path = #{ENV['PATH'].inspect}\n"
+    state += "@exe_cache_time = #{Time.now.to_i}\n"
   end
-  # Only write @cmd_completions if user has customized it
-  unless conf =~ /^@cmd_completions\s*=/
-    # Don't write default completions to avoid cluttering .rshrc
-  end
-  conf.sub!(/^@history.*(\n|$)/, "")
+
   # Ensure history is properly formatted as valid Ruby array
   begin
     history_str = @history.last(@histsize).inspect
-    conf += "@history = #{history_str}\n"
+    state += "@history = #{history_str}\n"
   rescue => e
-    conf += "@history = []\n"
-    puts "Warning: Error saving history: #{e.message}"
+    state += "@history = []\n"
+    puts "Warning: Error saving history: #{e.message}" if ENV['RSH_DEBUG']
   end
+
+  File.write(Dir.home+'/.rshstate', state)
+end
+def migrate_to_split_config # Migrate from old single .rshrc to split .rshrc + .rshstate
+  return if File.exist?(Dir.home+'/.rshstate')  # Already migrated
+  return unless File.exist?(Dir.home+'/.rshrc')  # Nothing to migrate
+
+  puts "\nMigrating to split configuration (.rshrc + .rshstate)..."
+
+  # Runtime data will already be loaded from .rshrc by load_rshrc_safe
+  # Just need to save it to .rshstate and clean .rshrc
+
+  # Create .rshstate with current runtime data
+  rshstate
+
+  # Clean runtime data from .rshrc
+  conf = File.read(Dir.home+'/.rshrc')
+  conf.sub!(/^@cmd_frequency.*(\n|$)/, "")
+  conf.sub!(/^@cmd_stats.*(\n|$)/, "")
+  conf.sub!(/^@exe_cache.*(\n|$)/, "")
+  conf.sub!(/^@exe_cache_path.*(\n|$)/, "")
+  conf.sub!(/^@exe_cache_time.*(\n|$)/, "")
+  conf.sub!(/^@completion_weights.*(\n|$)/, "")
+  conf.sub!(/^@history =.*(\n|$)/, "")
   File.write(Dir.home+'/.rshrc', conf)
-  puts ".rshrc updated"
+
+  puts "Migration complete!"
+  puts "  .rshrc     -> User config (portable)"
+  puts "  .rshstate  -> Runtime data (auto-managed)\n"
 end
 
 # RSH FUNCTIONS
@@ -2973,6 +3007,15 @@ def load_rshrc_safe
       end
     end
 
+    # Load runtime state from .rshstate (separate file)
+    if File.exist?(Dir.home+'/.rshstate')
+      begin
+        load(Dir.home+'/.rshstate')
+      rescue => e
+        puts "Warning: Could not load .rshstate: #{e.message}" if ENV['RSH_DEBUG']
+      end
+    end
+
   rescue SyntaxError => e
     puts "\n\033[31mERROR: Syntax error in .rshrc:\033[0m"
     puts e.message
@@ -3169,6 +3212,7 @@ begin # Load .rshrc and populate @history
   end
   firstrun unless File.exist?(Dir.home+'/.rshrc') # Initial loading - to get history
   load_rshrc_safe
+  migrate_to_split_config  # Migrate from old format if needed (v3.4.3+)
   # Load login shell files if rsh is running as login shell
   if ENV['LOGIN_SHELL'] or $0 == "-rsh" or ARGV.include?('-l') or ARGV.include?('--login')
     ['/etc/profile', Dir.home+'/.profile', Dir.home+'/.bash_profile', Dir.home+'/.bashrc'].each do |f|
@@ -3212,8 +3256,8 @@ end
 # MAIN PART
 loop do 
   begin
-    @user = Etc.getpwuid(Process.euid).name # For use in @prompt
-    @node = Etc.uname[:nodename]            # For use in @prompt
+    @user ||= Etc.getpwuid(Process.euid).name # Cached for performance
+    @node ||= Etc.uname[:nodename]            # Cached for performance
     # Only reload .rshrc if directory changed (optimization)
     current_dir = Dir.pwd
     if @last_prompt_dir != current_dir
@@ -3221,7 +3265,7 @@ loop do
       @last_prompt_dir = current_dir
     end
     @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
-    system("printf \"\033]0;rsh: #{Dir.pwd}\007\"")   # Set Window title to path
+    print "\033]0;rsh: #{current_dir}\007"   # Set window title (no spawn)
     @history[0] = "" unless @history[0]
     cache_executables  # Use cached executable lookup
     # Load plugins on first command (lazy loading)
