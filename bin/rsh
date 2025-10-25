@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.4.2" # Improved defun syntax: :defun lists, :defun -name removes, enhanced :help
+@version    = "3.4.3" # Enhanced tab completion: LS_COLORS, visual indicators, smart context, auto-complete ..
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -97,6 +97,12 @@ begin # Initialization
   @c_tabselect = 5                        # Color for selected tabcompleted item
   @c_taboption = 244                      # Color for unselected tabcompleted item
   @c_stamp     = 244                      # Color for time stamp/command
+  # File type colors for tab completion
+  @c_dir       = 33                       # Color for directories (blue)
+  @c_exec      = 2                        # Color for executables (green)
+  @c_image     = 13                       # Color for images (magenta)
+  @c_archive   = 11                       # Color for archives (yellow)
+  @c_file      = 7                        # Color for regular files (white/default)
   # Prompt
   @prompt      = "rsh > ".c(@c_prompt).b  # Very basic prompt if not defined in .rshrc
   # Hash & array initializations
@@ -153,6 +159,7 @@ begin # Initialization
   @validation_rules = []                  # Custom validation rules
   @completion_weights = {}                # Completion learning weights
   @completion_learning = true             # Enable completion learning (default: on)
+  @completion_show_metadata = false       # Show file metadata in completions (default: off)
   @recording = {active: false, name: nil, commands: []} # Command recording state
   @recordings = {}                        # Saved recordings
   @command_cache = {}                     # Cache for expensive shell command outputs
@@ -600,11 +607,24 @@ def tab(type)
           type = "cmd_subcommands"
           @current_cmd = last_cmd
         # If we're completing after a command (not at start of line), show only files
-        elsif cmd_parts.length > 1 || (cmd_parts.length == 1 && @tabstr.empty?)
+        elsif last_cmd
           type = "files_dirs_only"
         end
       end
     end
+  end
+
+  # Auto-complete . and .. for directory navigation commands
+  if type == "dirs_only" && (@tabstr == ".." || @tabstr == ".")
+    completed = @tabstr + "/"
+    @history[0] = @pretab + completed + @postab
+    @pos = @pretab.length + completed.length
+    @c_col = @pos0 + @pos
+    @c.clear_line
+    line_display = cmd_check(@history[0]).to_s
+    print @prompt + line_display
+    @c.col(@c_col)
+    return
   end
 
   while chr != "ENTER"
@@ -809,33 +829,91 @@ def tab(type)
         @newhist0 = @pretab + tabchoice + @postab             # Remember now the new value to be given to @history[0]
         line1     = cmd_check(@pretab).to_s                   # Syntax highlight before @tabstr
         line2     = cmd_check(@postab).to_s                   # Syntax highlight after  @tabstr
-        # Color and underline the current tabchoice on the commandline:
-        tabline   = tabchoice.sub(/(.*)#{@tabstr}(.*)/, '\1'.c(@c_tabselect) + @tabstr.u.c(@c_tabselect) + '\2'.c(@c_tabselect))
+        # Color and underline the current tabchoice on the commandline with file type color:
+        display_choice = tabchoice.dup
+        clean_choice = tabchoice.gsub(/['"]/, '').chomp('/')
+        if !tabchoice.end_with?('/') && File.exist?(clean_choice) && File.executable?(clean_choice) && !File.directory?(clean_choice)
+          display_choice += '*'
+        end
+        choice_color = get_file_color(tabchoice)
+        # Escape regex special characters in @tabstr for pattern matching
+        escaped_tabstr = Regexp.escape(@tabstr)
+        tabline   = display_choice.sub(/(.*)#{escaped_tabstr}(.*)/, '\1'.c(choice_color) + @tabstr.u.c(choice_color) + '\2'.c(choice_color))
         print @prompt + line1 + tabline + line2               # Print the commandline
         @pos   = @pretab.length.to_i + tabchoice.length.to_i  # Set the position on that commandline
         @c_col = @pos0 + @pos                                 # The cursor position must include the prompt as well
         @c.col(@c_col)                                        # Set the cursor position
         nextline                                              # Then start showing the completion items
         tabline  = @tabarray[i]                               # Get the next matching tabline
+        # Add executable indicator
+        display_item = tabline.dup
+        clean_item = tabline.gsub(/['"]/, '').chomp('/')
+        if !tabline.end_with?('/') && File.exist?(clean_item) && File.executable?(clean_item) && !File.directory?(clean_item)
+          display_item += '*'
+        end
+        # Get file type color, but make selected item bold for distinction
+        file_color = get_file_color(tabline)
         # Can't nest ANSI codes, they must each complete/conclude or they will mess eachother up
-        if tabline.include?(@tabstr)
-          tabline1 = tabline.sub(/(.*?)#{@tabstr}.*/, '\1').c(@c_tabselect) # Color the part before the @tabstr
-          tabline2 = tabline.sub(/.*?#{@tabstr}(.*)/, '\1').c(@c_tabselect) # Color the part after the @tabstr
-          print " " + tabline1 + @tabstr.c(@c_tabselect).u + tabline2       # Color & underline @tabstr
+        escaped_tabstr = Regexp.escape(@tabstr)
+        if display_item.include?(@tabstr)
+          tabline1 = display_item.sub(/(.*?)#{escaped_tabstr}.*/, '\1').c(file_color).b # Bold + color for selected
+          tabline2 = display_item.sub(/.*?#{escaped_tabstr}(.*)/, '\1').c(file_color).b
+          print " " + tabline1 + @tabstr.c(file_color).u.b + tabline2       # Bold, color & underline @tabstr
         else
           # For fuzzy matches, just show the whole word highlighted
-          print " " + tabline.c(@c_tabselect)
+          print " " + display_item.c(file_color).b
+        end
+        # Add metadata if enabled
+        if @completion_show_metadata && File.exist?(clean_item)
+          if File.directory?(clean_item)
+            begin
+              count = Dir.entries(clean_item).length - 2
+              print " [#{count}]".c(244)
+            rescue
+            end
+          else
+            size = File.size(clean_item)
+            size_str = size < 1024 ? "#{size}B" :
+                       size < 1024*1024 ? "#{(size/1024.0).round(1)}K" :
+                       "#{(size/(1024.0*1024)).round(1)}M"
+            print " [#{size_str}]".c(244)
+          end
         end
       else
         begin
           tabline = @tabarray[i+x]    # Next tabline, and next, etc (usually 4 times here)
-          if tabline.include?(@tabstr)
-            tabline1 = tabline.sub(/(.*?)#{@tabstr}.*/, '\1').c(@c_taboption) # Color before @tabstr
-            tabline2 = tabline.sub(/.*?#{@tabstr}(.*)/, '\1').c(@c_taboption) # Color after @tabstr
-            print " " + tabline1 + @tabstr.c(@c_taboption).u + tabline2       # Print the whole line
+          # Add executable indicator
+          display_item = tabline.dup
+          clean_item = tabline.gsub(/['"]/, '').chomp('/')
+          if !tabline.end_with?('/') && File.exist?(clean_item) && File.executable?(clean_item) && !File.directory?(clean_item)
+            display_item += '*'
+          end
+          # Get file type color for unselected items (no bold)
+          file_color = get_file_color(tabline)
+          escaped_tabstr = Regexp.escape(@tabstr)
+          if display_item.include?(@tabstr)
+            tabline1 = display_item.sub(/(.*?)#{escaped_tabstr}.*/, '\1').c(file_color) # Color before @tabstr
+            tabline2 = display_item.sub(/.*?#{escaped_tabstr}(.*)/, '\1').c(file_color) # Color after @tabstr
+            print " " + tabline1 + @tabstr.c(file_color).u + tabline2       # Print the whole line
           else
             # For fuzzy matches, just show the whole word
-            print " " + tabline.c(@c_taboption)
+            print " " + display_item.c(file_color)
+          end
+          # Add metadata if enabled
+          if @completion_show_metadata && File.exist?(clean_item)
+            if File.directory?(clean_item)
+              begin
+                count = Dir.entries(clean_item).length - 2
+                print " [#{count}]".c(244)
+              rescue
+              end
+            else
+              size = File.size(clean_item)
+              size_str = size < 1024 ? "#{size}B" :
+                         size < 1024*1024 ? "#{(size/1024.0).round(1)}K" :
+                         "#{(size/(1024.0*1024)).round(1)}M"
+              print " [#{size_str}]".c(244)
+            end
           end
         rescue => e
           # Log completion errors if debugging enabled
@@ -860,7 +938,7 @@ def tab(type)
       if @tabstr == ""
         @history[0] = @pretab + @postab
         tabend
-        return 
+        return
       end
       @tabstr.chop!
     when 'WBACK' # Delete one word to the left (Ctrl-W)
@@ -1053,9 +1131,13 @@ def config(*args) # Configure rsh settings
     @completion_limit = value.to_i
     puts "Completion limit set to #{value}"
     rshrc
+  when 'completion_show_metadata'
+    @completion_show_metadata = %w[on true yes 1].include?(value.to_s.downcase)
+    puts "Completion metadata display #{@completion_show_metadata ? 'enabled' : 'disabled'}"
+    rshrc
   else
     puts "Unknown setting '#{setting}'"
-    puts "Available: history_dedup, session_autosave, auto_correct, slow_command_threshold, completion_learning, completion_limit"
+    puts "Available: history_dedup, session_autosave, auto_correct, slow_command_threshold, completion_learning, completion_limit, completion_show_metadata"
   end
 end
 def env(*args) # Environment variable management
@@ -1095,6 +1177,119 @@ def env(*args) # Environment variable management
       puts "Environment variable '#{var_name}' not set"
     end
   end
+end
+def parse_ls_colors # Parse LS_COLORS into a hash for file type coloring
+  @ls_colors = {}
+
+  # Map ANSI basic color codes (30-37, 90-97) to 256-color equivalents
+  ansi_to_256 = {
+    30 => 0,   # black
+    31 => 196, # red -> bright red
+    32 => 2,   # green
+    33 => 11,  # yellow -> bright yellow
+    34 => 33,  # blue -> nice blue
+    35 => 13,  # magenta -> nice magenta
+    36 => 14,  # cyan -> bright cyan
+    37 => 7,   # white
+    90 => 8,   # bright black (gray)
+    91 => 9,   # bright red
+    92 => 10,  # bright green
+    93 => 11,  # bright yellow
+    94 => 12,  # bright blue
+    95 => 13,  # bright magenta
+    96 => 14,  # bright cyan
+    97 => 15   # bright white
+  }
+
+  if ENV['LS_COLORS']
+    ENV['LS_COLORS'].split(':').each do |entry|
+      next if entry.empty?
+      key, value = entry.split('=')
+      next unless key && value
+
+      # LS_COLORS can use multiple formats:
+      # - "38;5;111" or "38;5;111;1" = 256-color format (use color 111 directly)
+      # - "01;34" = ANSI format (bold + basic color 34, needs conversion)
+      # - "34" = simple ANSI basic color (needs conversion)
+
+      if value =~ /38;5;(\d+)/ # 256-color format (check this first!)
+        @ls_colors[key] = $1.to_i
+      elsif value =~ /(\d+);(\d+)/ # ANSI with attributes (e.g., "01;34")
+        ansi_code = $2.to_i
+        @ls_colors[key] = ansi_to_256[ansi_code] || ansi_code
+      elsif value =~ /^(\d+)$/ # Simple ANSI color
+        ansi_code = $1.to_i
+        @ls_colors[key] = ansi_to_256[ansi_code] || ansi_code
+      end
+    end
+  end
+
+  # Always set defaults (even if LS_COLORS isn't available)
+  @ls_colors['di'] ||= 33   # directories = blue
+  @ls_colors['ex'] ||= 2    # executables = green
+  @ls_colors['ln'] ||= 14   # symlinks = cyan
+  @ls_colors['fi'] ||= 7    # regular files = white
+end
+def get_file_color(filename) # Get color for a file based on LS_COLORS
+  return 7 unless @ls_colors  # Default to white if not initialized
+
+  # Check if it's a directory
+  if filename.end_with?('/')
+    return @ls_colors['di'] || 33
+  end
+
+  # Remove quotes and trailing slash for checking
+  clean_name = filename.gsub(/['"]/, '').chomp('/')
+
+  # Check if file exists and is executable
+  if File.exist?(clean_name) && File.executable?(clean_name) && !File.directory?(clean_name)
+    return @ls_colors['ex'] || 2
+  end
+
+  # Check extension patterns (*.jpg, *.tar, etc.)
+  ext = File.extname(clean_name)
+  if ext && !ext.empty? && @ls_colors["*#{ext}"]
+    return @ls_colors["*#{ext}"]
+  end
+
+  # Default to regular file color (if 0, use 7/white as 0 means "default" in LS_COLORS)
+  file_color = @ls_colors['fi'] || 7
+  file_color = 7 if file_color == 0  # 0 means "reset to default" in LS_COLORS
+  file_color
+end
+def format_tab_item(item, show_metadata: false) # Format tab item with color and optional metadata
+  color = get_file_color(item)
+  formatted = item
+
+  # Add executable indicator
+  clean_name = item.gsub(/['"]/, '')
+  if !item.end_with?('/') && File.exist?(clean_name) && File.executable?(clean_name)
+    formatted += '*'
+  end
+
+  # Add metadata if requested
+  if show_metadata && @completion_show_metadata
+    clean_name = clean_name.chomp('/')
+    if File.exist?(clean_name)
+      if File.directory?(clean_name)
+        begin
+          count = Dir.entries(clean_name).length - 2  # Exclude . and ..
+          meta = "[dir, #{count} items]"
+        rescue
+          meta = "[dir]"
+        end
+      else
+        size = File.size(clean_name)
+        size_str = size < 1024 ? "#{size}B" :
+                   size < 1024*1024 ? "#{(size/1024.0).round(1)}K" :
+                   "#{(size/(1024.0*1024)).round(1)}M"
+        meta = "[#{size_str}]"
+      end
+      formatted = formatted.ljust(30) + " #{meta}".c(244)
+    end
+  end
+
+  formatted.c(color)
 end
 def cmd_check(str) # Check if each element on the readline matches commands, nicks, paths; color them
   return if str.nil?
@@ -2997,11 +3192,12 @@ begin # Load .rshrc and populate @history
   ENV["PATH"]  ? ENV["PATH"] += ":" : ENV["PATH"] = ""
   ENV["PATH"] += "/home/#{@user}/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   if @lscolors and File.exist?(@lscolors)
-    ls = File.read(@lscolors) 
+    ls = File.read(@lscolors)
     ls.sub!(/export.*/, '')
     ls.sub!(/^LS_COLORS=/, 'ENV["LS_COLORS"]=')
     eval(ls)
   end
+  parse_ls_colors             # Parse LS_COLORS for tab completion coloring
   @c = Cursor               # Initiate @c as Cursor
   @c.save                   # Get max row & col
   @c.row(8000)

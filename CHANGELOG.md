@@ -1,5 +1,27 @@
 # rsh Changelog
 
+## v3.4.3 - Enhanced Tab Completion (2025-10-25)
+
+### ✓ **TAB COMPLETION ENHANCEMENTS**
+- **LS_COLORS integration**: Completions use your LS_COLORS for consistent file type coloring
+- Supports both 256-color format (38;5;X) and ANSI format (01;34)
+- **File type indicators**: Executables shown with `*`, directories with `/`
+- **Visual selection**: Selected item shown in BOLD, others in regular weight
+- **Optional metadata**: `:config completion_show_metadata on` shows file sizes and directory counts
+- **Smart context**: Commands only complete at start of line or after pipes/separators
+- After typing a command, TAB prioritizes files/directories
+- Example: `convert <TAB>` shows image files first, not all commands
+- **Auto-complete**: `cd ..<TAB>` instantly completes to `cd ../`
+- **Regex fix**: Proper escaping for paths with special characters (dots, etc.)
+
+### ✓ **DOCUMENTATION**
+- Added Environment Variables section explaining `:env` commands
+- Clarified why `export VAR=value` doesn't work (subprocess limitation)
+- Show correct `:env set VAR value` syntax for persistent variables
+- Closed GitHub issue #5 with documentation
+
+---
+
 ## v3.4.2 - Improved defun Syntax (2025-10-23)
 
 ### ✓ **IMPROVED SYNTAX**
@@ -13,6 +35,10 @@
 - Commands only complete at start of line or after pipes/separators
 - After typing a command, TAB now prioritizes files/directories
 - Example: `convert <TAB>` shows image files first, not all commands
+- **LS_COLORS integration**: Completions use your LS_COLORS for consistent coloring
+- **File type indicators**: Executables shown with `*`, directories with `/`
+- **Visual selection**: Selected item shown in BOLD, others in regular weight
+- **Optional metadata**: `:config completion_show_metadata on` shows sizes/counts
 - Smarter context-aware completion for better UX
 
 ### ✓ **DOCUMENTATION**
