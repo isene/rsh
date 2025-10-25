@@ -1,5 +1,27 @@
 # rsh Changelog
 
+## v3.4.4 - Configuration Split & Performance (2025-10-25)
+
+### ✓ **CONFIGURATION IMPROVEMENTS**
+- **Separated .rshrc and .rshstate files**
+- `.rshrc` - User-editable config (portable: prompt, nicks, bookmarks, defuns, settings)
+- `.rshstate` - Auto-managed runtime data (history, stats, cache, learning weights)
+- **Auto-migration**: Seamlessly migrates from old single-file format on first run
+- Prevents custom prompt/config from being wiped by auto-save
+- Makes .rshrc portable between machines
+
+### ✓ **PERFORMANCE IMPROVEMENTS**
+- Window title: Direct print vs system spawn (~2-5ms per prompt)
+- Cached user/node info (~0.1ms per prompt)
+- Reuse Dir.pwd call (already cached as current_dir)
+- Faster, snappier prompt loop
+
+### ✓ **TAB COMPLETION**
+- Symlink color detection (shows gray per LS_COLORS)
+- Symlinked directories properly distinguished from regular directories
+
+---
+
 ## v3.4.3 - Enhanced Tab Completion (2025-10-25)
 
 ### ✓ **TAB COMPLETION ENHANCEMENTS**

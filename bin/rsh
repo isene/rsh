@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.4.3" # Enhanced tab completion: LS_COLORS, visual indicators, smart context, auto-complete ..
+@version    = "3.4.4" # Split .rshrc/.rshstate, performance improvements, symlink colors, auto-migration
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
