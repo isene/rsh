@@ -359,6 +359,36 @@ Create safety rules to block, confirm, warn, or log specific command patterns:
 
 ---
 
+## Environment Variables
+
+**Note:** rsh uses `:env` commands for environment management, not the standard `export` syntax.
+
+```bash
+# List all environment variables (shows first 20)
+:env
+
+# View specific variable
+:env PATH
+
+# Set environment variable
+:env set PATH /opt/local/bin:/usr/bin:/bin
+
+# Unset environment variable
+:env unset MY_VAR
+
+# Export all variables to shell script
+:env export my_env.sh
+```
+
+**Why not `export`?**
+- rsh uses colon commands (`:cmd`) for shell operations
+- Standard `export VAR=value` syntax spawns a subprocess that doesn't affect parent shell
+- Use `:env set VAR value` instead for persistent environment changes
+
+**Tip:** Add `:env set` commands to your `~/.rshrc` for variables you need on every startup.
+
+---
+
 ## Plugin System (v3.2.0+)
 
 rsh supports a powerful plugin system for extending functionality. Plugins are Ruby classes placed in `~/.rsh/plugins/` that can:
