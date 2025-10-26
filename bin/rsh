@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.4.4" # Split .rshrc/.rshstate, performance improvements, symlink colors, auto-migration
+@version    = "3.4.5" # Dynamic directory colors in prompt via LS_COLORS integration
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -1262,6 +1262,18 @@ def get_file_color(filename) # Get color for a file based on LS_COLORS
   file_color = 7 if file_color == 0  # 0 means "reset to default" in LS_COLORS
   file_color
 end
+def get_dir_color(path) # Get color for directory path in prompt
+  # Check pattern matches first (like RTFM's @topmatch)
+  # Set @dir_colors in .rshrc as array of [pattern, color] pairs
+  # Example: @dir_colors = [["PassionFruit", 171], ["Dualog", 72], ["/G", 172], ["", 33]]
+  if @dir_colors && @dir_colors.is_a?(Array)
+    match = @dir_colors.find { |pattern, _| pattern.empty? || path.include?(pattern) }
+    return match.last if match
+  end
+
+  # Fall back to LS_COLORS directory color
+  @ls_colors['di'] || 33
+end
 def format_tab_item(item, show_metadata: false) # Format tab item with color and optional metadata
   color = get_file_color(item)
   formatted = item
@@ -1335,7 +1347,12 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
       # Color bookmarks (after commands and nicks)
       el.c(@c_bookmark)
     elsif File.exist?(clean_el)
-      el.c(@c_path)
+      # Use directory color matching for directories, @c_path for files
+      if File.directory?(clean_el)
+        el.c(get_dir_color(File.expand_path(clean_el)))
+      else
+        el.c(@c_path)
+      end
     elsif el[0] == "-"
       el.c(@c_switch)
     else
@@ -3211,6 +3228,8 @@ begin # Load .rshrc and populate @history
     exit
   end
   firstrun unless File.exist?(Dir.home+'/.rshrc') # Initial loading - to get history
+  # Initialize @ls_colors with defaults so get_dir_color() works in .rshrc prompt
+  @ls_colors = { 'di' => 33, 'ex' => 2, 'ln' => 14, 'fi' => 7 }
   load_rshrc_safe
   migrate_to_split_config  # Migrate from old format if needed (v3.4.3+)
   # Load login shell files if rsh is running as login shell
@@ -3235,6 +3254,7 @@ begin # Load .rshrc and populate @history
   ENV["TERM"]  = "rxvt-unicode-256color"
   ENV["PATH"]  ? ENV["PATH"] += ":" : ENV["PATH"] = ""
   ENV["PATH"] += "/home/#{@user}/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  # Load actual LS_COLORS from file (now that @lscolors is set from .rshrc)
   if @lscolors and File.exist?(@lscolors)
     ls = File.read(@lscolors)
     ls.sub!(/export.*/, '')

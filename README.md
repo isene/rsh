@@ -476,6 +476,27 @@ Also, a special variable for better LS_COLOR setup:
 ```
 Point `@lscolors` to a file that sets your LS_COLORS variable. Use [my extended LS_COLORS setup](https://github.com/isene/LS_COLORS) to make this really fancy.
 
+### Directory Colors in Prompt
+
+**rsh is fully LS_COLORS compliant** - both tab completion and prompt paths use LS_COLORS for consistent theming.
+
+You can override directory colors in the prompt using pattern matching (like RTFM's @topmatch):
+```ruby
+@dir_colors = [
+  ["PassionFruit", 171],  # Paths containing "PassionFruit" -> magenta
+  ["Dualog", 72],         # Paths containing "Dualog" -> cyan
+  ["/G", 172],            # Paths containing "/G" -> orange
+]
+```
+
+How it works:
+- Array of `[pattern, color]` pairs
+- First matching pattern wins (uses Ruby's `include?` method)
+- If no pattern matches, uses LS_COLORS 'di' value (your configured directory color)
+- Pattern matching is simple substring matching: "/G" matches "/home/user/Main/G/..."
+
+This lets you visually distinguish different project directories at a glance in your prompt.
+
 You can add any Ruby code to your .rshrc.
 
 # Enter the world of Ruby

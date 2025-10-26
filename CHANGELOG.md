@@ -1,5 +1,21 @@
 # rsh Changelog
 
+## v3.4.5 - Dynamic Directory Colors in Prompt (2025-10-26)
+
+### ✓ **PROMPT & COMMAND LINE ENHANCEMENTS**
+- **rsh is now fully LS_COLORS compliant**: Prompt, command line, and tab completion use consistent LS_COLORS theming
+- **LS_COLORS integration for prompt paths**: Directory paths in prompt now use LS_COLORS 'di' value
+- **Pattern-based directory colors**: Color directories by pattern matching (like RTFM's @topmatch)
+- Works everywhere: prompt paths, command arguments (e.g., "cd Claude"), and tab completion
+- Configure in .rshrc: `@dir_colors = [["PassionFruit", 171], ["Dualog", 72], ["/G", 172]]`
+- First matching pattern wins (uses string include? check)
+- Example: Typing "cd Claude/PassionFruit" will color "Claude/PassionFruit" in 171 (magenta)
+- Falls back to LS_COLORS directory color automatically if no pattern matches
+- Files continue to use `@c_path` color, only directories use pattern matching
+- Zero performance impact (simple pattern matching)
+
+---
+
 ## v3.4.4 - Configuration Split & Performance (2025-10-25)
 
 ### ✓ **CONFIGURATION IMPROVEMENTS**
