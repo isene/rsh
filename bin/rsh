@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.4.5" # Dynamic directory colors in prompt via LS_COLORS integration
+@version    = "3.4.6" # Plugin help system, 4 new plugins, plugins disabled by default, Ctrl-W fix
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -154,7 +154,7 @@ begin # Initialization
   @slow_command_threshold = 0             # Threshold for slow command alerts (0 = disabled)
   @plugin_dir = Dir.home + '/.rsh/plugins' # Plugins directory
   @plugins = []                           # Loaded plugin instances
-  @plugin_disabled = []                   # List of disabled plugin names
+  @plugin_enabled = []                    # List of enabled plugin names (whitelist)
   @plugin_commands = {}                   # Commands added by plugins
   @validation_rules = []                  # Custom validation rules
   @completion_weights = {}                # Completion learning weights
@@ -352,7 +352,7 @@ def getstr # A custom Readline-like function
     # The actual printing og the command line
     @c.row(@row0)
     @c.clear_line
-    print @prompt
+    print @display_prompt
     @c.clear_screen_down
     row, @pos0 = @c.pos
     #@history[0] = "" if @history[0].nil?
@@ -476,11 +476,13 @@ def getstr # A custom Readline-like function
       @c.clear_line_after
     when 'WBACK' # Delete one word to the left (Ctrl-W)
       unless @pos == @pos0
-        until @history[0][@pos - 1] == " " or @pos == 0
+        # Skip over any trailing spaces first
+        while @pos > 0 && @history[0][@pos - 1] == " "
           @pos -= 1
           @history[0][@pos] = ""
         end
-        if @history[0][@pos - 1] == " "
+        # Delete the word (until we hit a space or start)
+        while @pos > 0 && @history[0][@pos - 1] != " "
           @pos -= 1
           @history[0][@pos] = ""
         end
@@ -622,7 +624,7 @@ def tab(type)
     @c_col = @pos0 + @pos
     @c.clear_line
     line_display = cmd_check(@history[0]).to_s
-    print @prompt + line_display
+    print @display_prompt + line_display
     @c.col(@c_col)
     return
   end
@@ -645,14 +647,22 @@ def tab(type)
       @tabarray = @recordings.keys
     when "plugin_args"
       # Completions for :plugins command
-      @tabarray = %w[reload info]
-      # Add plugin names for enable/disable/info
+      @tabarray = %w[reload]
+      # Add help for all available plugins
+      if Dir.exist?(@plugin_dir)
+        available = Dir.glob(@plugin_dir + '/*.rb').map { |f| File.basename(f, '.rb') }
+        @tabarray += available.map { |p| "help #{p}" }
+        @tabarray += available.map { |p| "info #{p}" }
+      end
+      # Add plugin names for enable/disable
       if @plugins.any?
         @tabarray += @plugins.map { |p| "disable #{p[:name]}" }
-        @tabarray += @plugins.map { |p| "info #{p[:name]}" }
       end
-      if @plugin_disabled.any?
-        @tabarray += @plugin_disabled.map { |p| "enable #{p}" }
+      # Show "enable" for disabled plugins (available but not enabled)
+      if Dir.exist?(@plugin_dir)
+        available = Dir.glob(@plugin_dir + '/*.rb').map { |f| File.basename(f, '.rb') }
+        disabled = available - @plugin_enabled
+        @tabarray += disabled.map { |p| "enable #{p}" } if disabled.any?
       end
     when "switch"
       cmdswitch = @pretab.split(/[|, ]/).last.to_s.strip
@@ -839,7 +849,7 @@ def tab(type)
         # Escape regex special characters in @tabstr for pattern matching
         escaped_tabstr = Regexp.escape(@tabstr)
         tabline   = display_choice.sub(/(.*)#{escaped_tabstr}(.*)/, '\1'.c(choice_color) + @tabstr.u.c(choice_color) + '\2'.c(choice_color))
-        print @prompt + line1 + tabline + line2               # Print the commandline
+        print @display_prompt + line1 + tabline + line2       # Print the commandline
         @pos   = @pretab.length.to_i + tabchoice.length.to_i  # Set the position on that commandline
         @c_col = @pos0 + @pos                                 # The cursor position must include the prompt as well
         @c.col(@c_col)                                        # Set the cursor position
@@ -1389,8 +1399,8 @@ def rshrc # Write user configuration to .rshrc (portable between machines)
   conf += "@completion_learning = #{@completion_learning}\n" unless @completion_learning
   conf.sub!(/^@completion_show_metadata.*(\n|$)/, "")
   conf += "@completion_show_metadata = #{@completion_show_metadata}\n" if @completion_show_metadata
-  conf.sub!(/^@plugin_disabled.*(\n|$)/, "")
-  conf += "@plugin_disabled = #{@plugin_disabled}\n" unless @plugin_disabled.empty?
+  conf.sub!(/^@plugin_enabled.*(\n|$)/, "")
+  conf += "@plugin_enabled = #{@plugin_enabled}\n" unless @plugin_enabled.empty?
   conf.sub!(/^@validation_rules.*(\n|$)/, "")
   conf += "@validation_rules = #{@validation_rules}\n" unless @validation_rules.empty?
 
@@ -2250,8 +2260,8 @@ def load_plugins # Load all plugins from plugin directory
   plugin_files.each do |plugin_file|
     plugin_name = File.basename(plugin_file, '.rb')
 
-    # Skip if disabled
-    next if @plugin_disabled.include?(plugin_name)
+    # Only load if explicitly enabled (whitelist)
+    next unless @plugin_enabled.include?(plugin_name)
 
     begin
       # Load the plugin file
@@ -2321,22 +2331,26 @@ def call_plugin_hook(hook_name, *args) # Call a lifecycle hook for all plugins
 end
 def plugins(*args) # Plugin management command
   if args.empty?
-    # List all plugins
-    if @plugins.empty?
-      puts "\nNo plugins loaded"
+    # List all available plugins
+    available_plugins = Dir.exist?(@plugin_dir) ? Dir.glob(@plugin_dir + '/*.rb').map { |f| File.basename(f, '.rb') }.sort : []
+
+    if available_plugins.empty?
+      puts "\nNo plugins found"
       puts "Place .rb files in #{@plugin_dir}"
       return
     end
 
-    puts "\n  Loaded Plugins:".c(@c_prompt).b
-    @plugins.each do |plugin|
-      status = @plugin_disabled.include?(plugin[:name]) ? '[disabled]'.c(196) : '[enabled]'.c(@c_path)
-      puts "    #{plugin[:name].ljust(20)} #{status} (#{plugin[:class]})"
-    end
-
-    unless @plugin_disabled.empty?
-      puts "\n  Disabled Plugins:".c(@c_stamp)
-      @plugin_disabled.each { |name| puts "    #{name}" }
+    puts "\n  Available Plugins:".c(@c_prompt).b
+    available_plugins.each do |name|
+      if @plugin_enabled.include?(name)
+        status = '[enabled]'.c(@c_path)
+        plugin = @plugins.find { |p| p[:name] == name }
+        class_info = plugin ? " (#{plugin[:class]})" : ""
+      else
+        status = '[disabled]'.c(196)
+        class_info = ""
+      end
+      puts "    #{name.ljust(20)} #{status}#{class_info}"
     end
     puts
   elsif args[0] == 'reload'
@@ -2348,15 +2362,15 @@ def plugins(*args) # Plugin management command
   elsif args[0] == 'enable' && args[1]
     # Enable a plugin
     plugin_name = args[1]
-    @plugin_disabled.delete(plugin_name)
+    unless @plugin_enabled.include?(plugin_name)
+      @plugin_enabled << plugin_name
+    end
     puts "Plugin '#{plugin_name}' enabled. Use :plugins reload to load it"
     rshrc
   elsif args[0] == 'disable' && args[1]
     # Disable a plugin
     plugin_name = args[1]
-    unless @plugin_disabled.include?(plugin_name)
-      @plugin_disabled << plugin_name
-    end
+    @plugin_enabled.delete(plugin_name)
     @plugins.reject! { |p| p[:name] == plugin_name }
     puts "Plugin '#{plugin_name}' disabled"
     rshrc
@@ -2382,6 +2396,51 @@ def plugins(*args) # Plugin management command
     else
       puts "Plugin '#{plugin_name}' not found"
     end
+  elsif args[0] == 'help' && args[1]
+    # Show plugin help
+    plugin_name = args[1]
+    plugin_file = "#{@plugin_dir}/#{plugin_name}.rb"
+
+    if File.exist?(plugin_file)
+      content = File.read(plugin_file)
+
+      # Extract help block (lines starting with # at top of file)
+      help_lines = []
+      in_help = true
+      content.each_line do |line|
+        if in_help && line =~ /^#\s*(.*)$/
+          help_text = $1
+          next if help_text =~ /^-+$/ # Skip separator lines
+          help_lines << help_text
+        elsif line.strip.empty?
+          next
+        else
+          in_help = false
+          break
+        end
+      end
+
+      if help_lines.any?
+        puts "\n#{help_lines.join("\n")}\n"
+      else
+        puts "No help available for plugin '#{plugin_name}'"
+      end
+
+      # Extract and show available commands
+      commands = []
+      content.scan(/def (\w+)\(/) { |match| commands << match[0] unless match[0] == 'initialize' }
+
+      if commands.any?
+        puts "\nCommands: #{commands.join(', ')}".c(@c_nick)
+        puts
+      end
+    else
+      puts "Plugin '#{plugin_name}' not found"
+      puts "Available plugins:"
+      Dir.glob(@plugin_dir + '/*.rb').each do |file|
+        puts "  #{File.basename(file, '.rb')}"
+      end
+    end
   else
     puts "Usage:"
     puts "  :plugins              List all plugins"
@@ -2389,6 +2448,7 @@ def plugins(*args) # Plugin management command
     puts "  :plugins enable NAME  Enable a plugin"
     puts "  :plugins disable NAME Disable a plugin"
     puts "  :plugins info NAME    Show plugin details"
+    puts "  :plugins help NAME    Show plugin help/usage"
   end
 end
 def validate_command(cmd) # Syntax validation before execution
@@ -2999,7 +3059,7 @@ def load_rshrc_safe
     @session_autosave = 0 unless @session_autosave.is_a?(Integer)
     @auto_correct = false unless [@auto_correct].any? { |v| v == true || v == false }
     @slow_command_threshold = 0 unless @slow_command_threshold.is_a?(Integer)
-    @plugin_disabled = [] unless @plugin_disabled.is_a?(Array)
+    @plugin_enabled = [] unless @plugin_enabled.is_a?(Array)
     @plugins = [] unless @plugins.is_a?(Array)
     @plugin_commands = {} unless @plugin_commands.is_a?(Hash)
     @validation_rules = [] unless @validation_rules.is_a?(Array)
@@ -3154,7 +3214,7 @@ def load_defaults
   @session_autosave ||= 0
   @auto_correct ||= false
   @slow_command_threshold ||= 0
-  @plugin_disabled ||= []
+  @plugin_enabled ||= []
   @plugins ||= []
   @plugin_commands ||= {}
   @validation_rules ||= []
@@ -3293,9 +3353,10 @@ loop do
       load_plugins
       @plugins_loaded = true
     end
-    # Append plugin prompt additions (after plugins loaded)
+    # Build display prompt with plugin additions (don't modify @prompt)
     plugin_prompts = call_plugin_hook(:on_prompt)
-    @prompt += plugin_prompts.join if plugin_prompts.any?
+    @display_prompt = @prompt.dup
+    @display_prompt += plugin_prompts.join if plugin_prompts.any?
     # Auto-save session if enabled and interval elapsed
     if @session_autosave && @session_autosave > 0
       current_time = Time.now.to_i
@@ -3342,7 +3403,7 @@ loop do
     # Move cursor to end of line and print the full command before clearing
     @c.row(@row0)
     @c.clear_line
-    print @prompt + cmd_check(@cmd)
+    print @display_prompt + cmd_check(@cmd)
     print "\n"; @c.clear_screen_down
     if @cmd == "r" # Integration with rtfm (https://github.com/isene/RTFM)
       t  = Time.now

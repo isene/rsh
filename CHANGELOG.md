@@ -1,5 +1,29 @@
 # rsh Changelog
 
+## v3.4.6 - Plugin System Enhancements (2025-10-26)
+
+### ✓ **PLUGIN SYSTEM**
+- **Plugin help system**: New `:plugins help <name>` command shows usage and commands
+- Extracts help from plugin file header comments automatically
+- Lists available commands from plugin code
+- **4 new bundled plugins**:
+  - `venv` - Virtual environment indicators (Python/Ruby/Node/Conda) in prompt
+  - `extract` - Universal archive handler (tar.gz/zip/rar/7z/deb/rpm/etc)
+  - `docker` - Container management shortcuts (dps/dex/dlogs/dstop/dclean)
+  - `clipboard` - Cross-platform clipboard access (clip/clipp/clipf)
+- **Plugins disabled by default**: New users must explicitly enable plugins (whitelist model)
+- Changed from `@plugin_disabled` (blacklist) to `@plugin_enabled` (whitelist)
+- `:plugins` command shows all available plugins with enabled/disabled status
+- Full documentation for all plugins in PLUGIN_GUIDE.md
+
+### ✓ **BUG FIXES**
+- **Fixed double prompt issue**: Plugin prompt additions no longer duplicate
+- **Fixed Ctrl-W behavior**: Now handles consecutive word deletions correctly
+- Ctrl-W now skips trailing spaces before deleting word
+- Can press Ctrl-W multiple times to delete multiple words
+
+---
+
 ## v3.4.5 - Dynamic Directory Colors in Prompt (2025-10-26)
 
 ### ✓ **PROMPT & COMMAND LINE ENHANCEMENTS**

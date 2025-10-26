@@ -661,6 +661,113 @@ Planned for v4.0:
 
 ---
 
+## Included Plugins
+
+rsh comes with several useful plugins out of the box. Enable them with `:plugins "enable", "pluginname"`.
+
+### venv - Virtual Environment Indicators
+
+Shows active Python venv, Ruby rbenv/rvm, Node nvm, and Conda environments in your prompt.
+
+**Features:**
+- Detects Python virtualenv: `(py:myenv)`
+- Shows Ruby rbenv/rvm versions: `(rb:3.2.0)`
+- Displays Node version: `(node:18.0.0)`
+- Shows Conda environments: `(conda:base)`
+- Color-coded indicators (green for Python, red for Ruby, yellow for Node, cyan for Conda)
+
+**Usage:** Simply enable the plugin, indicators appear automatically when in an active environment.
+
+### extract - Universal Archive Handler
+
+Extract any archive format with a single command.
+
+**Features:**
+- Handles: `.tar.gz`, `.tar.bz2`, `.tar.xz`, `.zip`, `.rar`, `.7z`, `.gz`, `.bz2`, `.xz`, `.Z`, `.deb`, `.rpm`
+- Auto-detects format from extension
+- Success/error feedback with color
+
+**Commands:**
+- `extract file.tar.gz` - Extract any supported archive
+
+**Example:**
+```ruby
+extract project.tar.gz
+extract backup.zip
+extract archive.7z
+```
+
+### docker - Container Integration
+
+Quick Docker container management with prompt indicators.
+
+**Features:**
+- Shows running container count in prompt: `[docker:3]`
+- Quick container management commands
+- Docker Compose shortcuts
+
+**Commands:**
+- `dps` - List running containers (docker ps)
+- `dpsa` - List all containers (docker ps -a)
+- `dex <container>` - Execute bash in container
+- `dlogs <container> [lines]` - Show container logs (default 50 lines)
+- `dstop` - Stop all running containers
+- `dclean` - Remove all stopped containers
+- `dcup` - Docker compose up -d
+- `dcdown` - Docker compose down
+- `dcrestart` - Docker compose restart
+
+**Example:**
+```ruby
+dps                    # List running containers
+dex web_1              # Enter bash in web_1 container
+dlogs nginx 100        # Show last 100 log lines
+```
+
+### clipboard - Cross-Platform Clipboard
+
+Copy and paste text to/from system clipboard.
+
+**Features:**
+- Auto-detects clipboard tool (xclip, xsel, wl-copy/paste, pbcopy/paste, clip.exe)
+- Works on Linux (X11/Wayland), macOS, and Windows WSL
+- Copy last command, arbitrary text, or file contents
+
+**Commands:**
+- `clip [text]` - Copy text to clipboard (copies last command if no args)
+- `clipp` - Paste from clipboard and display
+- `clipf <file>` - Copy file contents to clipboard
+
+**Example:**
+```ruby
+clip                   # Copy last command
+clip some text here    # Copy this text
+clipf config.yml       # Copy file contents
+clipp                  # Show clipboard contents
+```
+
+### git_prompt - Git Branch Indicator
+
+Shows current git branch in prompt when in a git repository.
+
+**Features:**
+- Displays current branch: `[main]`
+- Only shows when in a git repo
+- Yellow color coding
+
+**Usage:** Enable and branch appears automatically in prompt.
+
+### command_logger - Command Logging
+
+Logs all commands to a file for audit/review.
+
+**Features:**
+- Logs commands with timestamp
+- Customizable log file location
+- Useful for command history analysis
+
+---
+
 ## Example Plugin Templates
 
 ### Minimal Plugin
