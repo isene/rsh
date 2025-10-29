@@ -1,5 +1,25 @@
 # rsh Changelog
 
+## v3.4.8 - Code Refactoring & Feedback (2025-10-29)
+
+### ✓ **CODE QUALITY IMPROVEMENTS**
+- Added `ensure_type()` helper - DRY for type validation (~20 lines → 8 lines)
+- Added `persist_var()` helper - DRY for config persistence (~30 lines → 15 lines)
+- Cleaner, more maintainable codebase
+- ~35 lines net savings through refactoring
+
+### ✓ **USER FEEDBACK**
+- Nick/gnick operations now show confirmation messages
+- Create: "Nick 'la' → 'ls -la'"
+- Delete: "Nick 'la' deleted" or "Nick 'la' not found"
+- Better UX, know what happened
+
+### ✓ **BUG FIXES**
+- Fixed @plugin_enabled → @plugin_disabled (copy-paste bug, 2 locations)
+- All type validations now consistent
+
+---
+
 ## v3.4.7 - Rehash Command (2025-10-29)
 
 ### ✓ **NEW FEATURES**

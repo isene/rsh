@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.4.7" # Added :rehash command to manually rebuild executable cache
+@version    = "3.4.8" # Code refactoring: DRY helpers, nick/gnick feedback, bug fixes
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -1077,6 +1077,16 @@ def suggest_command(cmd) # Smart command suggestions for typos
   candidates.sort_by! { |c| levenshtein_distance(cmd, c) }
   candidates.first(3)
 end
+def ensure_type(var_name, type, default) # Helper to ensure instance variable has correct type
+  var = instance_variable_get(var_name)
+  instance_variable_set(var_name, default) unless var.is_a?(type)
+end
+def persist_var(conf, var_name, value, condition = true) # Helper to persist variable to config
+  return conf unless condition
+  conf.sub!(/^#{Regexp.escape(var_name)}.*(\n|$)/, "")
+  conf += "#{var_name} = #{value.inspect}\n"
+  conf
+end
 def hist_clean # Clean up @history
   @history.compact!
   @history.delete("")
@@ -1378,31 +1388,19 @@ def rshrc # Write user configuration to .rshrc (portable between machines)
     conf = ""
   end
 
-  # Only update user-editable items in .rshrc
-  conf.sub!(/^@nick.*(\n|$)/, "")
-  conf += "@nick = #{@nick}\n"
-  conf.sub!(/^@gnick.*(\n|$)/, "")
-  conf += "@gnick = #{@gnick}\n"
-  conf.sub!(/^@bookmarks.*(\n|$)/, "")
-  conf += "@bookmarks = #{@bookmarks}\n" unless @bookmarks.empty?
-  conf.sub!(/^@defuns.*(\n|$)/, "")
-  conf += "@defuns = #{@defuns}\n" unless @defuns.empty?
-  conf.sub!(/^@history_dedup.*(\n|$)/, "")
-  conf += "@history_dedup = '#{@history_dedup}'\n" if @history_dedup && @history_dedup != 'smart'
-  conf.sub!(/^@session_autosave.*(\n|$)/, "")
-  conf += "@session_autosave = #{@session_autosave}\n" if @session_autosave && @session_autosave > 0
-  conf.sub!(/^@auto_correct.*(\n|$)/, "")
-  conf += "@auto_correct = #{@auto_correct}\n" if @auto_correct
-  conf.sub!(/^@slow_command_threshold.*(\n|$)/, "")
-  conf += "@slow_command_threshold = #{@slow_command_threshold}\n" if @slow_command_threshold && @slow_command_threshold > 0
-  conf.sub!(/^@completion_learning.*(\n|$)/, "")
-  conf += "@completion_learning = #{@completion_learning}\n" unless @completion_learning
-  conf.sub!(/^@completion_show_metadata.*(\n|$)/, "")
-  conf += "@completion_show_metadata = #{@completion_show_metadata}\n" if @completion_show_metadata
-  conf.sub!(/^@plugin_enabled.*(\n|$)/, "")
-  conf += "@plugin_enabled = #{@plugin_enabled}\n" unless @plugin_enabled.empty?
-  conf.sub!(/^@validation_rules.*(\n|$)/, "")
-  conf += "@validation_rules = #{@validation_rules}\n" unless @validation_rules.empty?
+  # Persist user-editable configuration using helper
+  conf = persist_var(conf, '@nick', @nick)
+  conf = persist_var(conf, '@gnick', @gnick)
+  conf = persist_var(conf, '@bookmarks', @bookmarks, !@bookmarks.empty?)
+  conf = persist_var(conf, '@defuns', @defuns, !@defuns.empty?)
+  conf = persist_var(conf, '@history_dedup', @history_dedup, @history_dedup && @history_dedup != 'smart')
+  conf = persist_var(conf, '@session_autosave', @session_autosave, @session_autosave && @session_autosave > 0)
+  conf = persist_var(conf, '@auto_correct', @auto_correct, @auto_correct)
+  conf = persist_var(conf, '@slow_command_threshold', @slow_command_threshold, @slow_command_threshold && @slow_command_threshold > 0)
+  conf = persist_var(conf, '@completion_learning', @completion_learning, !@completion_learning)
+  conf = persist_var(conf, '@completion_show_metadata', @completion_show_metadata, @completion_show_metadata)
+  conf = persist_var(conf, '@plugin_disabled', @plugin_disabled, !@plugin_disabled.empty?)
+  conf = persist_var(conf, '@validation_rules', @validation_rules, !@validation_rules.empty?)
 
   File.write(Dir.home+'/.rshrc', conf)
   rshstate  # Also save runtime state
@@ -1624,12 +1622,17 @@ def nick(nick_str = nil)  # Define a new nick like this: `:nick "ls = ls --color
     puts
   elsif nick_str.match(/^\s*-/)
     source = nick_str.sub(/^\s*-/, '')
-    @nick.delete(source)
-    rshrc
+    if @nick.delete(source)
+      puts "Nick '#{source}' deleted"
+      rshrc
+    else
+      puts "Nick '#{source}' not found"
+    end
   else
     source = nick_str.sub(/ =.*/, '')
     target = nick_str.sub(/.*= /, '')
     @nick[source] = target
+    puts "Nick '#{source}' → '#{target}'"
     rshrc
   end
 end
@@ -1645,12 +1648,17 @@ def gnick(nick_str = nil) # Define a generic/global nick to match not only comma
     puts
   elsif nick_str.match(/^\s*-/)
     source = nick_str.sub(/^\s*-/, '')
-    @gnick.delete(source)
-    rshrc
+    if @gnick.delete(source)
+      puts "Gnick '#{source}' deleted"
+      rshrc
+    else
+      puts "Gnick '#{source}' not found"
+    end
   else
     source = nick_str.sub(/ =.*/, '')
     target = nick_str.sub(/.*= /, '')
     @gnick[source] = target
+    puts "Gnick '#{source}' → '#{target}'"
     rshrc
   end
 end
@@ -3057,26 +3065,26 @@ def load_rshrc_safe
     # Try to load the .rshrc file
     load(Dir.home+'/.rshrc')
 
-    # Validate critical variables
-    @history = [] unless @history.is_a?(Array)
-    @nick = {} unless @nick.is_a?(Hash)
-    @gnick = {} unless @gnick.is_a?(Hash)
-    @cmd_frequency = {} unless @cmd_frequency.is_a?(Hash)
-    @cmd_stats = {} unless @cmd_stats.is_a?(Hash)
-    @bookmarks = {} unless @bookmarks.is_a?(Hash)
-    @defuns = {} unless @defuns.is_a?(Hash)
-    @history_dedup = 'smart' unless @history_dedup.is_a?(String)
-    @session_autosave = 0 unless @session_autosave.is_a?(Integer)
-    @auto_correct = false unless [@auto_correct].any? { |v| v == true || v == false }
-    @slow_command_threshold = 0 unless @slow_command_threshold.is_a?(Integer)
-    @plugin_enabled = [] unless @plugin_enabled.is_a?(Array)
-    @plugins = [] unless @plugins.is_a?(Array)
-    @plugin_commands = {} unless @plugin_commands.is_a?(Hash)
-    @validation_rules = [] unless @validation_rules.is_a?(Array)
-    @completion_weights = {} unless @completion_weights.is_a?(Hash)
+    # Validate critical variables using helper
+    ensure_type(:@history, Array, [])
+    ensure_type(:@nick, Hash, {})
+    ensure_type(:@gnick, Hash, {})
+    ensure_type(:@cmd_frequency, Hash, {})
+    ensure_type(:@cmd_stats, Hash, {})
+    ensure_type(:@bookmarks, Hash, {})
+    ensure_type(:@defuns, Hash, {})
+    ensure_type(:@history_dedup, String, 'smart')
+    ensure_type(:@session_autosave, Integer, 0)
+    ensure_type(:@slow_command_threshold, Integer, 0)
+    ensure_type(:@plugin_disabled, Array, [])  # FIXED: was @plugin_enabled
+    ensure_type(:@plugins, Array, [])
+    ensure_type(:@plugin_commands, Hash, {})
+    ensure_type(:@validation_rules, Array, [])
+    ensure_type(:@completion_weights, Hash, {})
+    ensure_type(:@recording, Hash, {active: false, name: nil, commands: []})
+    ensure_type(:@recordings, Hash, {})
+    @auto_correct = false unless [true, false].include?(@auto_correct)
     @completion_learning = true if @completion_learning.nil?
-    @recording = {active: false, name: nil, commands: []} unless @recording.is_a?(Hash)
-    @recordings = {} unless @recordings.is_a?(Hash)
 
     # Restore defuns from .rshrc
     if @defuns && !@defuns.empty?
@@ -3207,31 +3215,34 @@ def auto_heal_rshrc
 end
 
 def load_defaults
-  @history ||= []
-  @nick ||= {"ls" => "ls --color -F"}
-  @gnick ||= {}
+  # Use ensure_type for consistency
+  ensure_type(:@history, Array, [])
+  ensure_type(:@nick, Hash, {"ls" => "ls --color -F"})
+  ensure_type(:@gnick, Hash, {})
+  ensure_type(:@cmd_frequency, Hash, {})
+  ensure_type(:@cmd_stats, Hash, {})
+  ensure_type(:@bookmarks, Hash, {})
+  ensure_type(:@defuns, Hash, {})
+  ensure_type(:@switch_cache, Hash, {})
+  ensure_type(:@switch_cache_time, Hash, {})
+  ensure_type(:@plugin_disabled, Array, [])  # FIXED: was @plugin_enabled
+  ensure_type(:@plugins, Array, [])
+  ensure_type(:@plugin_commands, Hash, {})
+  ensure_type(:@validation_rules, Array, [])
+  ensure_type(:@completion_weights, Hash, {})
+  ensure_type(:@recording, Hash, {active: false, name: nil, commands: []})
+  ensure_type(:@recordings, Hash, {})
+
   @completion_limit ||= 10
   @completion_case_sensitive ||= false
   @completion_show_descriptions ||= false
   @completion_fuzzy ||= true
-  @cmd_frequency ||= {}
-  @cmd_stats ||= {}
-  @bookmarks ||= {}
-  @defuns ||= {}
-  @switch_cache ||= {}
-  @switch_cache_time ||= {}
   @history_dedup ||= 'smart'
   @session_autosave ||= 0
   @auto_correct ||= false
   @slow_command_threshold ||= 0
-  @plugin_enabled ||= []
-  @plugins ||= []
-  @plugin_commands ||= {}
-  @validation_rules ||= []
-  @completion_weights ||= {}
   @completion_learning = true if @completion_learning.nil?
-  @recording ||= {active: false, name: nil, commands: []}
-  @recordings ||= {}
+
   puts "Loaded with default configuration."
 end
 
