@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.4.6" # Plugin help system, 4 new plugins, plugins disabled by default, Ctrl-W fix
+@version    = "3.4.7" # Added :rehash command to manually rebuild executable cache
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -1562,6 +1562,8 @@ def help
   col3 << ":help        This help"
   col3 << ":info        About rsh"
   col3 << ":version     Version info"
+  col3 << ":history     Show history"
+  col3 << ":rehash      Rebuild cache"
 
   # Pad columns to same length
   max_lines = [col1.length, col2.length, col3.length].max
@@ -1601,6 +1603,14 @@ end
 def rmhistory # Delete history
   @history = []
   puts "History deleted."
+end
+def rehash # Force rebuild of executable cache
+  @exe_cache = nil
+  @exe_cache_path = nil
+  @exe_cache_time = 0
+  @exe_cache_paths = ""
+  cache_executables
+  puts "Executable cache rebuilt (#{@exe.length} commands cached)."
 end
 def nick(nick_str = nil)  # Define a new nick like this: `:nick "ls = ls --color"`
   if nick_str.nil? || nick_str.empty?
@@ -3458,7 +3468,7 @@ loop do
                               save_session load_session list_sessions delete_session rmsession
                               validate completion_stats completion_reset
                               record replay
-                              history rmhistory jobs fg bg dirs help info version]
+                              history rmhistory rehash jobs fg bg dirs help info version]
 
           # Try to call as rsh method
           if known_commands.include?(cmd_name)

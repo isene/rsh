@@ -136,6 +136,7 @@ Special commands:
 * `:nick` lists all command nicks, `:gnick` lists general nicks
 * `:nick -name` delete a command nick, `:gnick -name` delete a general nick
 * `:history` will list the command history, while `:rmhistory` will delete the history
+* `:rehash` rebuilds the executable cache (useful after installing new commands)
 * `:jobs` will list background jobs, `:fg [job_id]` brings jobs to foreground, `:bg [job_id]` resumes stopped jobs
 * `:defun func(args) = code` defines Ruby functions callable as shell commands (persistent!)
 * `:defun` lists all user-defined functions, `:defun -func` removes functions

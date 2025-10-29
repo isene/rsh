@@ -1,5 +1,20 @@
 # rsh Changelog
 
+## v3.4.7 - Rehash Command (2025-10-29)
+
+### ✓ **NEW FEATURES**
+- **Added `:rehash` command**: Manually rebuild executable cache on demand
+- Works like zsh's built-in `rehash` command
+- Useful after installing new executables when you want immediate tab completion
+- Forces cache rebuild without waiting for automatic refresh (60s interval)
+- Displays count of cached executables after rebuild
+
+### ✓ **BUG FIXES**
+- Fixed issue where typing `rehash` would execute OpenSSL's `c_rehash` utility instead of rebuilding rsh's cache
+- rsh now intercepts `rehash` as a built-in command like other shells
+
+---
+
 ## v3.4.6 - Plugin System Enhancements (2025-10-26)
 
 ### ✓ **PLUGIN SYSTEM**
