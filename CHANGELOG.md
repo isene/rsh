@@ -1,5 +1,53 @@
 # rsh Changelog
 
+## v3.5.0 - Polish & Performance (2025-10-30)
+
+### ✓ **NICK/HISTORY EXPORT**
+- :nick --export filename.json - Export nicks to share across machines
+- :nick --import filename.json - Import nicks from file
+- :history --export history.txt - Export command history
+- Useful for backing up and sharing configurations
+
+### ✓ **EXPANDED COMPLETIONS**
+- Added 9 new tool completions: kubectl, terraform, aws, brew, yarn, make, ansible, poetry, pipenv
+- Total: 18 tools with smart subcommand completion
+- Instant value for modern development workflows
+
+### ✓ **VALIDATION TEMPLATES**
+- :validate --templates shows common safety rules
+- Quick-add examples for blocking dangerous commands
+- Templates for: safety (rm -rf /), confirmation (git push --force), warnings (sudo), logging
+
+### ✓ **STARTUP TIPS**
+- Random helpful tips on first command (30% chance)
+- Discover features organically
+- :config show_tips on|off to toggle
+- Tips shown in gray, non-intrusive
+
+### ✓ **IMPROVED :info**
+- :info --quick for brief version
+- :info --features for feature list only
+- :info for full introduction (default)
+- Faster reference lookup
+
+### ✓ **PERFORMANCE OPTIMIZATION**
+- Aggressive suggest_command optimization for huge PATHs (18K+ executables)
+- Length + first letter pre-filtering
+- Hard 100-command limit for suggestions
+- Prevents 70s hangs on typos → instant response
+
+### ✓ **TIMESTAMP ACCURACY**
+- Timestamp now shows CORRECTED command after auto-fix
+- "21:48:02: ls" not "21:48:02: ll"
+- See what actually executed
+
+### ✓ **BUG FIXES**
+- Fixed suggest_command performance for massive @exe arrays
+- Fixed timestamp to show post-correction command
+- Removed conflicting default nicks
+
+---
+
 ## v3.4.9 - Improved Calculator (2025-10-29)
 
 ### ✓ **SAFER :calc EVALUATION**

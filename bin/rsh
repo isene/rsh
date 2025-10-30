@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.4.9" # Improved :calc with safer eval, Math sandbox, better error messages
+@version    = "3.5.0" # Polish release: Nick/history export, default nicks, expanded completions, startup tips, validation templates
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -137,8 +137,18 @@ begin # Initialization
     "cargo" => %w[build run test check clean doc new init add search publish install update],
     "npm" => %w[install uninstall update run build test start init publish],
     "gem" => %w[install uninstall update list search build push],
-    "bundle" => %w[install update exec check config]
+    "bundle" => %w[install update exec check config],
+    "kubectl" => %w[get describe create delete apply edit logs exec port-forward scale rollout top explain diff patch],
+    "terraform" => %w[init plan apply destroy import output show],
+    "aws" => %w[s3 ec2 lambda cloudformation iam rds dynamodb sns sqs],
+    "brew" => %w[install uninstall update upgrade search info list],
+    "yarn" => %w[add remove install build test start init],
+    "make" => %w[clean install build test all],
+    "ansible" => %w[playbook galaxy vault inventory],
+    "poetry" => %w[add remove install update build publish],
+    "pipenv" => %w[install uninstall update shell run]
   }
+  @show_tips = true                           # Show startup tips (configurable)
   # New v3.0 features initialization
   @switch_cache = {}                      # Cache for command switches from --help
   @switch_cache_time = {}                 # Timestamp for cache expiry
@@ -277,7 +287,9 @@ def firstrun
   @completion_show_descriptions = false # Show help text inline
   @completion_fuzzy = true            # Enable fuzzy matching
 
-  @nick = {"ls"=>"ls --color -F"}
+  @nick = {
+    "ls" => "ls --color -F"
+  }
 RSHRC
   File.write(Dir.home+'/.rshrc', rc)
 end
@@ -1063,11 +1075,25 @@ def suggest_command(cmd) # Smart command suggestions for typos
   return nil if cmd.nil? || cmd.empty?
   return nil if @exe.include?(cmd) || @nick.include?(cmd)
 
+  max_dist = [cmd.length / 3, 2].max
+
+  # Pre-filter by length and first letter (huge optimization for large @exe)
+  length_range = (cmd.length - max_dist)..(cmd.length + max_dist)
+  first_letter = cmd[0]
+
+  # Filter: similar length AND (same first letter OR within 1 char distance)
+  pool = (@exe + @nick.keys).select do |c|
+    c.length >= 2 &&
+    length_range.include?(c.length) &&
+    (c[0] == first_letter || (c[0].ord - first_letter.ord).abs <= 1)
+  end
+
+  # Hard limit to prevent any hang
+  pool = pool.first(100)
+
   # Find commands with small edit distance
-  candidates = (@exe + @nick.keys).select do |c|
-    next false if c.length < 2
+  candidates = pool.select do |c|
     dist = levenshtein_distance(cmd, c)
-    max_dist = [cmd.length / 3, 2].max
     dist <= max_dist && dist > 0
   end
 
@@ -1115,6 +1141,7 @@ def config(*args) # Configure rsh settings
     puts "    auto_correct:       #{@auto_correct ? 'on' : 'off'}"
     puts "    slow_command_threshold: #{@slow_command_threshold}s #{@slow_command_threshold > 0 ? '(enabled)' : '(disabled)'}"
     puts "    completion_learning: #{@completion_learning ? 'on' : 'off'}"
+    puts "    show_tips:          #{@show_tips ? 'on' : 'off'}"
     puts "    completion_limit:   #{@completion_limit}"
     puts "    completion_fuzzy:   #{@completion_fuzzy}"
     puts "    completion_case_sensitive: #{@completion_case_sensitive}"
@@ -1155,9 +1182,13 @@ def config(*args) # Configure rsh settings
     @completion_show_metadata = %w[on true yes 1].include?(value.to_s.downcase)
     puts "Completion metadata display #{@completion_show_metadata ? 'enabled' : 'disabled'}"
     rshrc
+  when 'show_tips'
+    @show_tips = %w[on true yes 1].include?(value.to_s.downcase)
+    puts "Startup tips #{@show_tips ? 'enabled' : 'disabled'}"
+    rshrc
   else
     puts "Unknown setting '#{setting}'"
-    puts "Available: history_dedup, session_autosave, auto_correct, slow_command_threshold, completion_learning, completion_limit, completion_show_metadata"
+    puts "Available: history_dedup, session_autosave, auto_correct, slow_command_threshold, completion_learning, show_tips, completion_limit"
   end
 end
 def env(*args) # Environment variable management
@@ -1588,15 +1619,38 @@ def help
   end
   puts
 end
-def info
-  puts @info
+def info(*args)
+  option = args[0]
+
+  if option == '--quick'
+    puts "\nrsh v#{@version} - Ruby SHell"
+    puts "Type :help for commands, :info for full intro"
+  elsif option == '--features'
+    puts "\nKey Features:"
+    puts "• Nicks (aliases) with {{parameters}}"
+    puts "• Completion learning (adapts to you)"
+    puts "• Command recording & replay"
+    puts "• Plugin system"
+    puts "• Stats & analytics"
+    puts "• 6 color themes"
+    puts "• AI integration"
+    puts "Type :help for details"
+  else
+    puts @info
+  end
 end
 def version
   puts "rsh version = #{@version} (latest RubyGems version is #{Gem.latest_version_for("ruby-shell").version} - https://github.com/isene/rsh)"
 end
-def history # Show most recent history (up to 50 entries)
-  puts "History:"
-  @history.each_with_index {|h,i| puts i.to_s + "; " + h if i < 50}
+def history(*args) # Show most recent history (up to 50 entries)
+  if args[0] == '--export'
+    filename = args[1] || 'history.txt'
+    File.write(filename, @history.join("\n"))
+    puts "History exported to #{filename} (#{@history.length} commands)"
+  else
+    puts "History:"
+    @history.each_with_index {|h,i| puts i.to_s + "; " + h if i < 50}
+  end
 end
 def rmhistory # Delete history
   @history = []
@@ -1620,6 +1674,19 @@ def nick(nick_str = nil)  # Define a new nick like this: `:nick "ls = ls --color
       @nick.sort.each {|key, value| puts "  #{key.c(@c_nick)} = #{value}"}
     end
     puts
+  elsif nick_str =~ /^--export\s*(.*)/
+    filename = $1.strip.empty? ? 'nicks.json' : $1.strip
+    require 'json' unless defined?(JSON)
+    File.write(filename, JSON.pretty_generate(@nick))
+    puts "Nicks exported to #{filename}"
+  elsif nick_str =~ /^--import\s+(.*)/
+    filename = $1.strip
+    return puts "File '#{filename}' not found" unless File.exist?(filename)
+    require 'json' unless defined?(JSON)
+    imported = JSON.parse(File.read(filename))
+    imported.each { |k, v| @nick[k] = v }
+    puts "Imported #{imported.length} nicks"
+    rshrc
   elsif nick_str.match(/^\s*-/)
     source = nick_str.sub(/^\s*-/, '')
     if @nick.delete(source)
@@ -2564,12 +2631,28 @@ def validate(rule_str = nil) # Custom validation rule management
       puts "\nNo validation rules defined"
       puts "Usage: :validate pattern = action"
       puts "Actions: block, confirm, warn, log"
+      puts "Or try: :validate --templates"
       return
     end
     puts "\n  Validation Rules:".c(@c_prompt).b
     @validation_rules.each_with_index do |rule, i|
       puts "  #{i+1}. #{rule[:pattern].inspect} → #{rule[:action]}"
     end
+    puts
+  elsif rule_str == '--templates'
+    puts "\n  Common Validation Rule Templates:".c(@c_prompt).b
+    puts "  Safety:"
+    puts "    :validate rm -rf / = block"
+    puts "    :validate DROP TABLE = block"
+    puts "  Confirmation:"
+    puts "    :validate git push --force = confirm"
+    puts "    :validate npm publish = confirm"
+    puts "  Warnings:"
+    puts "    :validate sudo = warn"
+    puts "    :validate chmod 777 = warn"
+    puts "  Logging:"
+    puts "    :validate npm install = log"
+    puts "    :validate pip install = log"
     puts
   elsif rule_str =~ /^-(\d+)$/
     # Delete rule by index
@@ -3395,6 +3478,20 @@ loop do
     unless @plugins_loaded
       load_plugins
       @plugins_loaded = true
+      # Show startup tip (30% chance, if enabled)
+      if @show_tips && rand < 0.3
+        tips = [
+          "Tip: Use :nick gp={{branch}} for parametrized aliases!",
+          "Tip: Press Ctrl-G to edit commands in $EDITOR",
+          "Tip: :stats --graph shows visual analytics",
+          "Tip: :record your workflows and :replay them later",
+          "Tip: :validate rm -rf / = block for safety rules",
+          "Tip: :completion_stats shows what you use most",
+          "Tip: Type :help for quick reference",
+          "Tip: Disable tips with: :config show_tips off"
+        ]
+        puts tips.sample.c(244)
+      end
     end
     # Build display prompt with plugin additions (don't modify @prompt)
     plugin_prompts = call_plugin_hook(:on_prompt)
@@ -3622,11 +3719,12 @@ loop do
             puts "Bookmark '#{@cmd}' points to non-existent directory: #{bm_dir}".c(196)
           end
         else
-          puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
           if @cmd == "f" # fzf integration (https://github.com/junegunn/fzf)
+            puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
             res = `fzf`.chomp
             Dir.chdir(File.dirname(res))
           elsif File.exist?(@cmd) and not File.executable?(@cmd) and not @cmd.include?(" ")
+            puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
             # Only auto-open files if it's a single filename (no spaces = no command with args)
             if File.read(@cmd).force_encoding("UTF-8").valid_encoding?
               system("#{ENV['EDITOR']} #{@cmd}") # Try open with user's editor
@@ -3643,6 +3741,9 @@ loop do
 
               # Apply auto-correct if enabled (before validation)
               @cmd = apply_auto_correct(@cmd)
+
+              # Print timestamp AFTER auto-correct (shows what actually executes)
+              puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
 
               # Validate command after auto-correction
               warnings = validate_command(@cmd)
