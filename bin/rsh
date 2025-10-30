@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.4.8" # Code refactoring: DRY helpers, nick/gnick feedback, bug fixes
+@version    = "3.4.9" # Improved :calc with safer eval, Math sandbox, better error messages
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -2515,24 +2515,46 @@ def validate_command(cmd) # Syntax validation before execution
 end
 def calc(*args) # Inline calculator using Ruby's Math library
   if args.empty?
-    puts "Usage: calc <expression>"
+    puts "Usage: :calc <expression>"
     puts "Examples:"
-    puts "  calc 2 + 2"
-    puts "  calc \"Math.sqrt(16)\""
-    puts "  calc \"Math::PI * 2\""
+    puts "  :calc 2 + 2"
+    puts "  :calc Math.sqrt(16)"
+    puts "  :calc Math::PI * 2"
+    puts "  :calc sin(PI/4)"
+    puts "Available: +, -, *, /, **, %, sqrt, sin, cos, tan, log, exp, abs, PI, E, etc."
     return
   end
 
   expression = args.join(' ')
 
+  # Create sandbox with Math module for safer evaluation
+  sandbox = Object.new
+  sandbox.extend(Math)
+
   begin
-    # Safe evaluation with Math library
-    result = eval(expression, binding, __FILE__, __LINE__)
+    result = sandbox.instance_eval(expression)
     puts result
+  rescue ZeroDivisionError
+    puts "Error: Division by zero"
+  rescue NameError => e
+    # Extract the undefined name
+    if e.message =~ /undefined local variable or method `(\w+)'/
+      undefined = $1
+      puts "Error: Unknown function or variable '#{undefined}'"
+      puts "Available Math functions: sqrt, sin, cos, tan, log, exp, abs, ceil, floor, round"
+      puts "Constants: PI, E"
+    else
+      puts "Error: #{e.message}"
+    end
   rescue SyntaxError => e
-    puts "Syntax error in expression: #{e.message}"
+    puts "Error: Invalid expression syntax"
+    puts "Check parentheses, operators, and spacing"
+  rescue ArgumentError => e
+    puts "Error: Invalid argument - #{e.message}"
+  rescue TypeError => e
+    puts "Error: Type mismatch - #{e.message}"
   rescue => e
-    puts "Error evaluating expression: #{e.message}"
+    puts "Error: #{e.message}"
   end
 end
 def validate(rule_str = nil) # Custom validation rule management

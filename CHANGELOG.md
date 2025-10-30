@@ -1,5 +1,28 @@
 # rsh Changelog
 
+## v3.4.9 - Improved Calculator (2025-10-29)
+
+### ✓ **SAFER :calc EVALUATION**
+- Math sandbox using `Object.new.extend(Math)` instead of raw eval
+- Prevents arbitrary code execution
+- Only Math operations allowed in sandbox
+- Suggested by havenwood from #ruby IRC channel
+
+### ✓ **BETTER ERROR MESSAGES**
+- Division by zero: Clear "Error: Division by zero" message
+- Unknown functions: "Error: Unknown function 'foo'" + list of available functions
+- Syntax errors: "Error: Invalid expression syntax" + helpful hints
+- Type errors: Clear messages for type mismatches
+- Argument errors: Specific error details
+
+### ✓ **IMPROVED HELP**
+- :calc with no args shows usage and available functions
+- Lists all Math functions: sqrt, sin, cos, tan, log, exp, abs, ceil, floor, round
+- Shows constants: PI, E
+- Better examples including sin(PI/4)
+
+---
+
 ## v3.4.8 - Code Refactoring & Feedback (2025-10-29)
 
 ### ✓ **CODE QUALITY IMPROVEMENTS**
