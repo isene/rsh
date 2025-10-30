@@ -2537,10 +2537,10 @@ def calc(*args) # Inline calculator using Ruby's Math library
   rescue ZeroDivisionError
     puts "Error: Division by zero"
   rescue NameError => e
-    # Extract the undefined name
-    if e.message =~ /undefined local variable or method `(\w+)'/
+    # Extract the undefined name (sandbox format)
+    if e.message =~ /undefined method `(\w+)'/
       undefined = $1
-      puts "Error: Unknown function or variable '#{undefined}'"
+      puts "Error: Unknown function '#{undefined}'"
       puts "Available Math functions: sqrt, sin, cos, tan, log, exp, abs, ceil, floor, round"
       puts "Constants: PI, E"
     else
