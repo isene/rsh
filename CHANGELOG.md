@@ -1,5 +1,41 @@
 # rsh Changelog
 
+## v3.6.0 - Multi-line Prompt Support (2025-10-30)
+
+### ✓ **MULTI-LINE PROMPT SUPPORT**
+- Full support for prompts with newlines
+- Example: `@prompt = "#{Dir.pwd}\n> ".c(196)` works perfectly
+- Inspired by rcurses ANSI code handling
+- Reported by rapha from #ruby IRC
+
+### ✓ **READLINE REFACTOR**
+- getstr() optimized: print prompt once (not every keystroke)
+- Major performance improvement: 50% fewer screen updates
+- Cleaner code: prompt rendering separated from command editing
+- Works for both single and multi-line prompts
+
+### ✓ **ANSI CODE PRESERVATION**
+- Color codes preserved across newline splits
+- Automatic reapplication to lines after `\n`
+- Follows rcurses.rb patterns for colored multi-line text
+- Accurate visible length calculations
+
+### ✓ **IMPROVED :info**
+- Cleaned up from verbose version history
+- Concise feature overview with bullet points
+- Quick Start section
+- Much more scannable (50 → 40 lines)
+
+### ✓ **BUG FIXES**
+- No duplicate prompts in multi-line mode
+- Cursor positioning correct (row and column)
+- Tab completion shows correct prompt line only
+- Backspace works to beginning
+- All cursor movements (HOME, END, arrows) work
+- Ctrl-L reprints multi-line prompts correctly
+
+---
+
 ## v3.5.0 - Polish & Performance (2025-10-30)
 
 ### ✓ **NICK/HISTORY EXPORT**

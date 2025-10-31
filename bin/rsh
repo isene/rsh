@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.5.0" # Polish release: Nick/history export, default nicks, expanded completions, startup tips, validation templates
+@version    = "3.6.0" # Multi-line prompt support: Complete readline refactor with rcurses-inspired ANSI handling
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -185,67 +185,44 @@ end
 # HELP TEXT
 @info = <<~INFO
 
-  Hello #{@user}, welcome to rsh v3.3 - the Ruby SHell.
+  Hello #{@user}, welcome to rsh v3.6 - the Ruby SHell.
 
-  rsh does not attempt to compete with the grand old shells like bash and zsh.
-  It serves the specific needs and wants of its author. If you like it, then feel free
-  to ask for more or different features here: https://github.com/isene/rsh.
+  rsh is a feature-rich shell written in pure Ruby, designed for productivity and customization.
 
-  Core Features:
-  * Aliases (called nicks in rsh) - both for commands and general nicks
-  * Syntax highlighting for nicks, bookmarks, commands, switches and valid dirs/files
-  * Tab completions for nicks, system commands, command switches and dirs/files
-  * Smart context-aware tab completion for git, apt, docker, systemctl, cargo, npm, gem, bundle
-  * History with editing, search and repeat (use `!` or UP arrow)
-  * Auto-suggestions from history (press RIGHT arrow to accept)
-  * Ruby functions callable as shell commands (persistent across sessions)
-  * AI integration: Use @ for text responses and @@ for command suggestions
+  KEY FEATURES:
+  • Nicks (aliases) with {{parameters}} - :nick gp = git push origin {{branch}}
+  • Completion learning - Shell learns and adapts to your patterns
+  • Plugin system - Extend with custom commands and hooks
+  • Command recording/replay - Automate workflows
+  • Sessions & bookmarks - Save and restore your workspace
+  • Multi-line prompts - Full support for prompts with newlines
+  • Stats & analytics - :stats shows usage patterns and performance
+  • Validation rules - :validate rm -rf / = block for safety
+  • 6 color themes - :theme solarized|dracula|gruvbox|nord|monokai|default
+  • Auto-correct - Smart typo detection with suggestions
+  • Shell scripts - Full bash support (for, while, if loops)
+  • AI integration - @ for questions, @@ for command suggestions
+  • Ruby functions - :defun for custom shell commands
+  • 18 tool completions - git, docker, kubectl, terraform, aws, etc.
 
-  NEW in v3.0:
-  * Command analytics - :stats shows usage patterns and performance metrics
-  * Enhanced bookmarks with tags - :bm "name path #tag1,tag2" then just type name to jump
-  * Session management - :save_session and :load_session preserve your entire shell state
-  * Smart typo detection - "Did you mean...?" suggestions for misspelled commands
-  * Switch caching - Faster TAB completion for command options
-  * Option value completion - TAB complete values like --format=json
-  * Syntax validation - Pre-execution warnings for dangerous or malformed commands
-  * Unified command syntax - :nick, :gnick, :bm all work the same way (list/create/delete)
+  QUICK START:
+  • :help - Command reference
+  • :info --features - Feature list
+  • :nick - Create alias
+  • :bm - Bookmark directory
+  • :stats - View analytics
+  • :theme - Change colors
+  • :plugins - Extend functionality
 
-  NEW in v3.4:
-  * Completion learning - Shell learns which TAB completions you use and ranks them higher
-  * Context-aware - Separate learning for each command (git, ls, docker, etc.)
-  * :completion_stats - View learned patterns with visual bar charts
-  * Persistent - Learning data saves to .rshrc across sessions
+  CUSTOMIZATION:
+  • Config file: ~/.rshrc (edit with :config or manually)
+  • Colors: All themeable (see :help)
+  • Exit: Ctrl-D (save) or Ctrl-E (don't save)
 
-  v3.3 Features:
-  * Quote-less syntax - No more quotes! Use :nick la = ls -la
-  * Parametrized nicks - :nick gp = git push origin {{branch}}, then: gp branch=main
-  * Ctrl-G multi-line edit - Press Ctrl-G to edit command in $EDITOR
-  * Custom validation - :validate rm -rf / = block prevents dangerous commands
-  * Shell script support - for/while/if loops work with full bash syntax
-
-  v3.2 Features:
-  * Plugin system - Extensible architecture for custom commands, completions, and hooks
-  * Auto-correct typos - :config auto_correct on (with confirmation prompt)
-  * Command timing alerts - :config slow_command_threshold 5 warns on slow commands
-  * Inline calculator - :calc 2 + 2, :calc "Math::PI", full Ruby Math library
-  * Enhanced history - !!, !-2, !5:7 for repeat last, nth-to-last, and chaining
-  * Stats visualization - :stats --graph for colorful ASCII bar charts
-
-  v3.1 Features:
-  * Multiple named sessions - :save_session "project" and :load_session "project"
-  * Stats export - :stats --csv or :stats --json for data analysis
-  * Session auto-save - Set @session_autosave = 300 in .rshrc for 5-min auto-save
-  * Bookmark import/export - :bm --export file.json and :bm --import file.json
-  * Bookmark statistics - :bm --stats shows usage patterns and tag distribution
-  * Color themes - :theme solarized|dracula|gruvbox|nord|monokai
-  * Config management - :config shows/sets history_dedup, session_autosave, etc.
-  * Environment management - :env for listing/setting/exporting environment variables
-
-  Config file (.rshrc) updates on exit (Ctrl-d) or not (Ctrl-e).
-  All colors are themeable in .rshrc (see github link for possibilities).
-
-  Use `:help` for complete command reference.
+  MORE INFO:
+  • GitHub: https://github.com/isene/rsh
+  • Docs: Type :help for quick reference
+  • Version: Type :version for current/latest
 
 INFO
 
@@ -356,19 +333,73 @@ def getstr # A custom Readline-like function
     @pos = @ai_suggestion.length
     @ai_suggestion = nil
   end
+
+  # Print prompt ONCE at start (optimization + multi-line support)
   @row0, p = @c.pos
+
+  # Clear any previous prompt
+  @c.row(@row0)
+  @c.clear_screen_down
+
+  print @display_prompt
+
+  # Calculate positions and save prompt parts
+  if @display_prompt.include?("\n")
+    # Multi-line prompt
+    newline_count = @display_prompt.count("\n")
+    @row0 += newline_count
+
+    # Extract last line and reapply color codes (rcurses pattern)
+    # Detect ANY color codes at start of full prompt
+    color_codes = ""
+    if @display_prompt =~ /^(\001\e\[[0-9;]+m\002)/
+      color_codes = $1
+    end
+
+    # Split and get last line
+    lines = @display_prompt.split("\n")
+    @prompt_last_line = lines.last
+
+    # If original had colors and last line doesn't, reapply them
+    if !color_codes.empty? && !@prompt_last_line.start_with?("\001")
+      @prompt_last_line = color_codes + @prompt_last_line + "\001\e[0m\002"
+    end
+
+    # Calculate visible length (strip ANSI for counting)
+    @pos0 = @prompt_last_line.gsub(/\001?\e\[[0-9;]*m\002?/, '').length
+    @cmd_row = @row0
+    @is_multiline = true
+  else
+    # Single-line prompt
+    row, @pos0 = @c.pos
+    @prompt_last_line = @display_prompt
+    @cmd_row = @row0
+    @is_multiline = false
+  end
+
   while chr != "ENTER" # Keep going with readline until user presses ENTER
     @ci   = nil
     lift  = false
     right = false
-    # The actual printing og the command line
-    @c.row(@row0)
-    @c.clear_line
-    print @display_prompt
-    @c.clear_screen_down
-    row, @pos0 = @c.pos
-    #@history[0] = "" if @history[0].nil?
+
+    # Update command line display (not the prompt!)
+    @c.row(@cmd_row)
+
+    # Reprint the prompt line (preserves colors)
+    if @is_multiline
+      @c.col(1)
+      print @prompt_last_line
+      @c.clear_line_after
+    else
+      @c.col(1)
+      print @prompt_last_line
+      @c.clear_line_after
+    end
+
+    # Print command text with syntax highlighting
     print cmd_check(@history[0])
+
+    # Print history suggestion if available
     @ci  = @history[1..].find_index {|e| e =~ /^#{Regexp.escape(@history[0].to_s)}./}
     unless @ci == nil
       @ci += 1
@@ -378,15 +409,17 @@ def getstr # A custom Readline-like function
       print @ciprompt.c(@c_stamp)
       right = true
     end
-    c_col = @pos0 + @pos
-    c_row = @row0 + c_col/(@maxcol)
-    c_col == 0 ? @c.row(c_row + 1) : @c.row(c_row)
-    if c_col.modulo(@maxcol) == 0
-      @c.col(c_col)
-      @c.row(@c.rowget - 1)
+
+    # Position cursor (different logic for single vs multi-line)
+    if @is_multiline
+      # Multi-line: @pos0 is string length (0-indexed), need +1 for terminal
+      cursor_col = @pos0 + @pos + 1
     else
-      @c.col(c_col.modulo(@maxcol))
+      # Single-line: @pos0 already from @c.pos (1-indexed)
+      cursor_col = @pos0 + @pos
     end
+    @c.row(@cmd_row)
+    @c.col(cursor_col)
     chr = getchr
     puts "DEBUG: Got char: '#{chr}' (length: #{chr.length})" if ENV['RSH_DEBUG']
     case chr
@@ -416,8 +449,21 @@ def getstr # A custom Readline-like function
       exit
     when 'C-L'   # Clear screen and set position to top of the screen
       @c.row(1)
-      @row0 = 1
       @c.clear_screen_down
+      # Reprint prompt after clear
+      @row0 = 1
+      print @display_prompt
+      # Recalculate positions
+      if @display_prompt.include?("\n")
+        newline_count = @display_prompt.count("\n")
+        @row0 += newline_count
+        last_line = @display_prompt.split("\n").last
+        @pos0 = last_line.gsub(/\001?\e\[[0-9;]*m\002?/, '').length
+        @cmd_row = @row0
+      else
+        row, @pos0 = @c.pos
+        @cmd_row = @row0
+      end
     when 'UP'    # Go up in history
       if @stk == 0 and @history[0].length > 0
         @tabsearch = @history[0]
@@ -436,8 +482,6 @@ def getstr # A custom Readline-like function
         end
         lift = false
       end
-      @c.row(@row0)
-      @c.clear_screen_down
     when 'DOWN'  # Go down in history
       if lift
         @history.unshift("")
@@ -457,8 +501,6 @@ def getstr # A custom Readline-like function
         @pos = @history[0].length
       end
       lift = false
-      @c.row(@row0)
-      @c.clear_screen_down
     when 'RIGHT' # Move right on the readline
       if right 
         if lift
@@ -633,10 +675,17 @@ def tab(type)
     completed = @tabstr + "/"
     @history[0] = @pretab + completed + @postab
     @pos = @pretab.length + completed.length
-    @c_col = @pos0 + @pos
+    # Consistent cursor calc
+    if @is_multiline
+      @c_col = @pos0 + @pos + 1
+    else
+      @c_col = @pos0 + @pos
+    end
     @c.clear_line
     line_display = cmd_check(@history[0]).to_s
-    print @display_prompt + line_display
+    # Use last line only for multi-line prompts
+    prompt_display = @is_multiline ? @display_prompt.split("\n").last : @display_prompt
+    print prompt_display + line_display
     @c.col(@c_col)
     return
   end
@@ -851,6 +900,9 @@ def tab(type)
         @newhist0 = @pretab + tabchoice + @postab             # Remember now the new value to be given to @history[0]
         line1     = cmd_check(@pretab).to_s                   # Syntax highlight before @tabstr
         line2     = cmd_check(@postab).to_s                   # Syntax highlight after  @tabstr
+
+        # For multi-line prompts, only show last line during tab completion
+        prompt_for_tab = @display_prompt.include?("\n") ? @display_prompt.split("\n").last : @display_prompt
         # Color and underline the current tabchoice on the commandline with file type color:
         display_choice = tabchoice.dup
         clean_choice = tabchoice.gsub(/['"]/, '').chomp('/')
@@ -861,9 +913,14 @@ def tab(type)
         # Escape regex special characters in @tabstr for pattern matching
         escaped_tabstr = Regexp.escape(@tabstr)
         tabline   = display_choice.sub(/(.*)#{escaped_tabstr}(.*)/, '\1'.c(choice_color) + @tabstr.u.c(choice_color) + '\2'.c(choice_color))
-        print @display_prompt + line1 + tabline + line2       # Print the commandline
+        print prompt_for_tab + line1 + tabline + line2       # Print the commandline (use last line only for multi-line)
         @pos   = @pretab.length.to_i + tabchoice.length.to_i  # Set the position on that commandline
-        @c_col = @pos0 + @pos                                 # The cursor position must include the prompt as well
+        # Consistent cursor positioning
+        if @is_multiline
+          @c_col = @pos0 + @pos + 1  # Multi-line: string length needs +1
+        else
+          @c_col = @pos0 + @pos      # Single-line: already 1-indexed
+        end
         @c.col(@c_col)                                        # Set the cursor position
         nextline                                              # Then start showing the completion items
         tabline  = @tabarray[i]                               # Get the next matching tabline
@@ -3541,9 +3598,11 @@ loop do
       @cmd = hi if hi
     end
     # Move cursor to end of line and print the full command before clearing
-    @c.row(@row0)
+    @c.row(@cmd_row || @row0)  # Use cmd_row if set (multi-line)
     @c.clear_line
-    print @display_prompt + cmd_check(@cmd)
+    # For multi-line, only print last line; for single-line, print full prompt
+    prompt_to_print = (@display_prompt.include?("\n") && @prompt_last_line) ? @prompt_last_line : @display_prompt
+    print prompt_to_print + cmd_check(@cmd)
     print "\n"; @c.clear_screen_down
     if @cmd == "r" # Integration with rtfm (https://github.com/isene/RTFM)
       t  = Time.now
