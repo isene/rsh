@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.0" # Multi-line prompt support: Complete readline refactor with rcurses-inspired ANSI handling
+@version    = "3.6.1" # Ctrl-L fixes: Position reset, visible length calculation, no duplicate prompts
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -371,11 +371,15 @@ def getstr # A custom Readline-like function
     @is_multiline = true
   else
     # Single-line prompt
-    row, @pos0 = @c.pos
+    row, col = @c.pos
     @prompt_last_line = @display_prompt
+    # Calculate visible length (strip ANSI) - don't trust @c.pos with complex prompts
+    @pos0 = @display_prompt.gsub(/\001\e\[[0-9;]*m\002/, '').length
     @cmd_row = @row0
     @is_multiline = false
   end
+
+  @skip_prompt_print = false  # Track if prompt already printed (for Ctrl-L)
 
   while chr != "ENTER" # Keep going with readline until user presses ENTER
     @ci   = nil
@@ -385,16 +389,13 @@ def getstr # A custom Readline-like function
     # Update command line display (not the prompt!)
     @c.row(@cmd_row)
 
-    # Reprint the prompt line (preserves colors)
-    if @is_multiline
-      @c.col(1)
-      print @prompt_last_line
-      @c.clear_line_after
-    else
+    # Reprint the prompt line (preserves colors) - skip if Ctrl-L just printed it
+    unless @skip_prompt_print
       @c.col(1)
       print @prompt_last_line
       @c.clear_line_after
     end
+    @skip_prompt_print = false  # Reset flag
 
     # Print command text with syntax highlighting
     print cmd_check(@history[0])
@@ -410,14 +411,11 @@ def getstr # A custom Readline-like function
       right = true
     end
 
-    # Position cursor (different logic for single vs multi-line)
-    if @is_multiline
-      # Multi-line: @pos0 is string length (0-indexed), need +1 for terminal
-      cursor_col = @pos0 + @pos + 1
-    else
-      # Single-line: @pos0 already from @c.pos (1-indexed)
-      cursor_col = @pos0 + @pos
-    end
+    # Position cursor (unified - both now use string length which is 0-indexed)
+    # @pos0 = visible length of prompt (14 for "geir@juba: ~/ ")
+    # @pos = position in command text (0 = start, 5 = after 5 chars)
+    # Terminal columns are 1-indexed, so add +1
+    cursor_col = @pos0 + @pos + 1
     @c.row(@cmd_row)
     @c.col(cursor_col)
     chr = getchr
@@ -449,21 +447,37 @@ def getstr # A custom Readline-like function
       exit
     when 'C-L'   # Clear screen and set position to top of the screen
       @c.row(1)
+      @c.col(1)  # Also reset column to 1
       @c.clear_screen_down
       # Reprint prompt after clear
       @row0 = 1
       print @display_prompt
-      # Recalculate positions
+      # Recalculate positions (match initial setup exactly)
       if @display_prompt.include?("\n")
         newline_count = @display_prompt.count("\n")
         @row0 += newline_count
-        last_line = @display_prompt.split("\n").last
-        @pos0 = last_line.gsub(/\001?\e\[[0-9;]*m\002?/, '').length
+        # Reextract color codes and last line (same as init)
+        color_codes = ""
+        if @display_prompt =~ /^(\001\e\[[0-9;]+m\002)/
+          color_codes = $1
+        end
+        lines = @display_prompt.split("\n")
+        @prompt_last_line = lines.last
+        if !color_codes.empty? && !@prompt_last_line.start_with?("\001")
+          @prompt_last_line = color_codes + @prompt_last_line + "\001\e[0m\002"
+        end
+        @pos0 = @prompt_last_line.gsub(/\001?\e\[[0-9;]*m\002?/, '').length
         @cmd_row = @row0
+        @is_multiline = true
       else
-        row, @pos0 = @c.pos
+        row, col = @c.pos
+        @prompt_last_line = @display_prompt
+        # Calculate visible length (match main init)
+        @pos0 = @display_prompt.gsub(/\001\e\[[0-9;]*m\002/, '').length
         @cmd_row = @row0
+        @is_multiline = false
       end
+      @skip_prompt_print = true  # Skip reprinting on next loop iteration
     when 'UP'    # Go up in history
       if @stk == 0 and @history[0].length > 0
         @tabsearch = @history[0]

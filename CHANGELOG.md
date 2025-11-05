@@ -1,5 +1,29 @@
 # rsh Changelog
 
+## v3.6.1 - Ctrl-L Fixes (2025-10-30)
+
+### ✓ **CTRL-L IMPROVEMENTS**
+- Fixed cursor position reset (row AND column to 1,1)
+- Fixed visible length calculation (@pos0 from string length, not cursor position)
+- Added skip-reprint flag to prevent duplicate prompts
+- Works correctly for both single and multi-line prompts
+- Resolved "gei~" corruption issue
+
+### ✓ **POSITION CALCULATIONS**
+- Unified @pos0 calculation: always from visible string length
+- Strip ANSI codes for accurate counting
+- Don't trust @c.pos with complex multi-color prompts
+- +1 offset for terminal's 1-indexed columns
+- Consistent across single-line, multi-line, and Ctrl-L
+
+### ✓ **BUG FIXES**
+- Ctrl-L no longer prints duplicate prompts
+- Cursor follows text correctly after clear
+- Multi-line prompts survive Ctrl-L
+- No more fragment corruption ("gei~" issue resolved)
+
+---
+
 ## v3.6.0 - Multi-line Prompt Support (2025-10-30)
 
 ### ✓ **MULTI-LINE PROMPT SUPPORT**
