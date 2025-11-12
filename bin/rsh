@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.1" # Ctrl-L fixes: Position reset, visible length calculation, no duplicate prompts
+@version    = "3.6.2" # TAB completion cursor fix: Unified positioning
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -689,12 +689,8 @@ def tab(type)
     completed = @tabstr + "/"
     @history[0] = @pretab + completed + @postab
     @pos = @pretab.length + completed.length
-    # Consistent cursor calc
-    if @is_multiline
-      @c_col = @pos0 + @pos + 1
-    else
-      @c_col = @pos0 + @pos
-    end
+    # Unified cursor calc (always +1 since @pos0 is now string length)
+    @c_col = @pos0 + @pos + 1
     @c.clear_line
     line_display = cmd_check(@history[0]).to_s
     # Use last line only for multi-line prompts
@@ -929,12 +925,8 @@ def tab(type)
         tabline   = display_choice.sub(/(.*)#{escaped_tabstr}(.*)/, '\1'.c(choice_color) + @tabstr.u.c(choice_color) + '\2'.c(choice_color))
         print prompt_for_tab + line1 + tabline + line2       # Print the commandline (use last line only for multi-line)
         @pos   = @pretab.length.to_i + tabchoice.length.to_i  # Set the position on that commandline
-        # Consistent cursor positioning
-        if @is_multiline
-          @c_col = @pos0 + @pos + 1  # Multi-line: string length needs +1
-        else
-          @c_col = @pos0 + @pos      # Single-line: already 1-indexed
-        end
+        # Unified cursor positioning (always +1 since @pos0 is now string length)
+        @c_col = @pos0 + @pos + 1
         @c.col(@c_col)                                        # Set the cursor position
         nextline                                              # Then start showing the completion items
         tabline  = @tabarray[i]                               # Get the next matching tabline

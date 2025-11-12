@@ -1,5 +1,21 @@
 # rsh Changelog
 
+## v3.6.2 - TAB Completion Cursor Fix (2025-10-30)
+
+### ✓ **UNIFIED CURSOR POSITIONING**
+- All cursor calculations now use consistent formula: @pos0 + @pos + 1
+- Fixed TAB completion cursor off-by-one (was 1 char to the left)
+- Fixed directory auto-complete cursor position
+- Matches main getstr loop logic
+
+### ✓ **CONSISTENCY**
+- 3 locations now unified: main loop, dir completion, tab completion
+- Works correctly for both single and multi-line prompts
+- No more conditional logic (was: +1 for multi, +0 for single)
+- Simpler, cleaner, correct
+
+---
+
 ## v3.6.1 - Ctrl-L Fixes (2025-10-30)
 
 ### ✓ **CTRL-L IMPROVEMENTS**
