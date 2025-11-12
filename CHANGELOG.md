@@ -1,5 +1,27 @@
 # rsh Changelog
 
+## v3.6.3 - Polish & UX (2025-10-30)
+
+### ✓ **CONFIG PERSISTENCE**
+- Fixed @show_tips not persisting to .rshrc
+- :config show_tips off now saves across sessions
+- All config options now persist correctly
+
+### ✓ **CONFIG DISPLAY**
+- Aligned columns for better readability
+- Values in consistent second column
+- Tighter spacing (6 chars vs 10)
+- More scannable output
+
+### ✓ **SMART TAB COMPLETION**
+- Calculates available screen space before showing items
+- Limits completions to what fits (no scrolling chaos)
+- At bottom: Shows 1-2 items instead of forcing scroll
+- At top: Shows full 5 items
+- Prevents screen jumbling
+
+---
+
 ## v3.6.2 - TAB Completion Cursor Fix (2025-10-30)
 
 ### ✓ **UNIFIED CURSOR POSITIONING**

@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.2" # TAB completion cursor fix: Unified positioning
+@version    = "3.6.3" # Polish: Config persistence, aligned display, smart completion space management
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -899,9 +899,17 @@ def tab(type)
       @tabarray = sort_by_learning(completion_context, @tabarray)
     end
 
-    @c.clear_screen_down                                      # Here we go
+    # Smart space calculation: Limit items to available screen space
+    current_row, current_col = @c.pos
+    space_available = @maxrow - current_row - 1  # Lines below cursor
     max_items = @completion_limit || 5
-    @tabarray.length.to_i - i < max_items ? l = @tabarray.length.to_i - i : l = max_items
+
+    # Show what fits: min of (space, limit, remaining items)
+    items_can_show = [space_available, max_items, @tabarray.length.to_i - i].min
+    items_can_show = [items_can_show, 1].max  # At least 1
+
+    @c.clear_screen_down                                      # Here we go
+    l = items_can_show
     l.times do |x|                                            # Iterate through
       if x == 0                                               # First item goes onto the commandline
         @c.clear_line                                         # Clear the line
@@ -928,7 +936,7 @@ def tab(type)
         # Unified cursor positioning (always +1 since @pos0 is now string length)
         @c_col = @pos0 + @pos + 1
         @c.col(@c_col)                                        # Set the cursor position
-        nextline                                              # Then start showing the completion items
+        nextline                                              # Show items below
         tabline  = @tabarray[i]                               # Get the next matching tabline
         # Add executable indicator
         display_item = tabline.dup
@@ -1197,17 +1205,29 @@ def config(*args) # Configure rsh settings
   value = args[1]
 
   if setting.nil?
-    # Show current configuration
+    # Show current configuration with aligned columns
     puts "\n  Current Configuration:".c(@c_prompt).b
-    puts "    history_dedup:      #{@history_dedup}"
-    puts "    session_autosave:   #{@session_autosave}s #{@session_autosave > 0 ? '(enabled)' : '(disabled)'}"
-    puts "    auto_correct:       #{@auto_correct ? 'on' : 'off'}"
-    puts "    slow_command_threshold: #{@slow_command_threshold}s #{@slow_command_threshold > 0 ? '(enabled)' : '(disabled)'}"
-    puts "    completion_learning: #{@completion_learning ? 'on' : 'off'}"
-    puts "    show_tips:          #{@show_tips ? 'on' : 'off'}"
-    puts "    completion_limit:   #{@completion_limit}"
-    puts "    completion_fuzzy:   #{@completion_fuzzy}"
-    puts "    completion_case_sensitive: #{@completion_case_sensitive}"
+    config_items = [
+      ["history_dedup", @history_dedup],
+      ["session_autosave", "#{@session_autosave}s", @session_autosave > 0 ? "(enabled)" : "(disabled)"],
+      ["auto_correct", @auto_correct ? "on" : "off"],
+      ["slow_command_threshold", "#{@slow_command_threshold}s", @slow_command_threshold > 0 ? "(enabled)" : "(disabled)"],
+      ["completion_learning", @completion_learning ? "on" : "off"],
+      ["show_tips", @show_tips ? "on" : "off"],
+      ["completion_limit", @completion_limit],
+      ["completion_fuzzy", @completion_fuzzy],
+      ["completion_case_sensitive", @completion_case_sensitive]
+    ]
+
+    # Find max label width for alignment
+    max_label = config_items.map { |item| item[0].length }.max
+
+    config_items.each do |item|
+      label = item[0].ljust(max_label)
+      value = item[1].to_s.ljust(6)  # Tighter spacing (10 → 6)
+      extra = item[2] || ""
+      puts "    #{label}  #{value} #{extra}"
+    end
     puts
     return
   end
@@ -1492,6 +1512,7 @@ def rshrc # Write user configuration to .rshrc (portable between machines)
   conf = persist_var(conf, '@auto_correct', @auto_correct, @auto_correct)
   conf = persist_var(conf, '@slow_command_threshold', @slow_command_threshold, @slow_command_threshold && @slow_command_threshold > 0)
   conf = persist_var(conf, '@completion_learning', @completion_learning, !@completion_learning)
+  conf = persist_var(conf, '@show_tips', @show_tips, !@show_tips)
   conf = persist_var(conf, '@completion_show_metadata', @completion_show_metadata, @completion_show_metadata)
   conf = persist_var(conf, '@plugin_disabled', @plugin_disabled, !@plugin_disabled.empty?)
   conf = persist_var(conf, '@validation_rules', @validation_rules, !@validation_rules.empty?)
