@@ -2957,6 +2957,7 @@ end
 def apply_auto_correct(cmd) # Apply auto-correction to command
   return cmd unless @auto_correct
   return cmd if cmd =~ /^:/  # Don't auto-correct colon commands
+  return cmd if cmd.include?('/')  # Don't auto-correct paths
   return cmd unless cmd =~ /^(\w+)/
 
   first_cmd = $1
