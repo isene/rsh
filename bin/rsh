@@ -3826,10 +3826,15 @@ loop do
               pre_cmd
 
               # Apply auto-correct if enabled (before validation)
+              original_cmd = @cmd
               @cmd = apply_auto_correct(@cmd)
 
               # Print timestamp AFTER auto-correct (shows what actually executes)
-              puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
+              if @cmd != original_cmd
+                puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd} (autocorrected from \"#{original_cmd}\")".c(@c_stamp)
+              else
+                puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
+              end
 
               # Validate command after auto-correction
               warnings = validate_command(@cmd)
