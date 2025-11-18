@@ -1498,6 +1498,26 @@ def rshrc # Write user configuration to .rshrc (portable between machines)
   hist_clean  # Clean history before saving
   if File.exist?(Dir.home+'/.rshrc')
     conf = File.read(Dir.home+'/.rshrc')
+
+    # Merge nicks from file with current instance (preserve nicks added in other instances)
+    if conf =~ /@nick\s*=\s*(\{.*?\})/m
+      begin
+        file_nicks = eval($1)
+        @nick = file_nicks.merge(@nick) if file_nicks.is_a?(Hash)
+      rescue
+        # If eval fails, keep current @nick
+      end
+    end
+
+    # Merge gnicks from file with current instance
+    if conf =~ /@gnick\s*=\s*(\{.*?\})/m
+      begin
+        file_gnicks = eval($1)
+        @gnick = file_gnicks.merge(@gnick) if file_gnicks.is_a?(Hash)
+      rescue
+        # If eval fails, keep current @gnick
+      end
+    end
   else
     conf = ""
   end
