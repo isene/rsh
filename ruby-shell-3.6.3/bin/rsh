@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.8" # Fix: cd now works in && chained commands
+@version    = "3.6.3" # Polish: Config persistence, aligned display, smart completion space management
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -1498,26 +1498,6 @@ def rshrc # Write user configuration to .rshrc (portable between machines)
   hist_clean  # Clean history before saving
   if File.exist?(Dir.home+'/.rshrc')
     conf = File.read(Dir.home+'/.rshrc')
-
-    # Merge nicks from file with current instance (preserve nicks added in other instances)
-    if conf =~ /@nick\s*=\s*(\{.*?\})/m
-      begin
-        file_nicks = eval($1)
-        @nick = file_nicks.merge(@nick) if file_nicks.is_a?(Hash)
-      rescue
-        # If eval fails, keep current @nick
-      end
-    end
-
-    # Merge gnicks from file with current instance
-    if conf =~ /@gnick\s*=\s*(\{.*?\})/m
-      begin
-        file_gnicks = eval($1)
-        @gnick = file_gnicks.merge(@gnick) if file_gnicks.is_a?(Hash)
-      rescue
-        # If eval fails, keep current @gnick
-      end
-    end
   else
     conf = ""
   end
@@ -2977,8 +2957,7 @@ end
 def apply_auto_correct(cmd) # Apply auto-correction to command
   return cmd unless @auto_correct
   return cmd if cmd =~ /^:/  # Don't auto-correct colon commands
-  return cmd if cmd.include?('/')  # Don't auto-correct paths
-  return cmd unless cmd =~ /^([\w.-]+)/  # Capture command including extensions (.sh, .py, etc.)
+  return cmd unless cmd =~ /^(\w+)/
 
   first_cmd = $1
 
@@ -3029,25 +3008,11 @@ def execute_conditional(cmd_line)
         end
       end
     else
-      # Execute the command - handle cd as built-in
-      if part =~ /^cd\s+(.+)$/ || part == "cd"
-        dir = $1 || Dir.home
-        dir = dir.sub(/^~/, Dir.home)
-        if Dir.exist?(dir)
-          Dir.chdir(dir)
-          success = true
-          @last_exit = 0
-        else
-          puts " cd: no such directory: #{dir}"
-          success = false
-          @last_exit = 1
-        end
-      else
-        success = system(part)
-        @last_exit = $?.exitstatus
-        puts " Command failed: #{part} (exit #{@last_exit})" unless success
-      end
+      # Execute the command
+      success = system(part)
       result = success
+      @last_exit = $?.exitstatus
+      puts " Command failed: #{part} (exit #{@last_exit})" unless success
     end
   end
 
@@ -3861,15 +3826,10 @@ loop do
               pre_cmd
 
               # Apply auto-correct if enabled (before validation)
-              original_cmd = @cmd
               @cmd = apply_auto_correct(@cmd)
 
               # Print timestamp AFTER auto-correct (shows what actually executes)
-              if @cmd != original_cmd
-                puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd} (autocorrected from \"#{original_cmd}\")".c(@c_stamp)
-              else
-                puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
-              end
+              puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
 
               # Validate command after auto-correction
               warnings = validate_command(@cmd)
