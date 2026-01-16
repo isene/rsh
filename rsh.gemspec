@@ -1,9 +1,9 @@
 Gem::Specification.new do |s|
   s.name        = 'ruby-shell'
-  s.version     = '3.6.8'
+  s.version     = '3.6.9'
   s.licenses    = ['Unlicense']
   s.summary     = "rsh - Ruby SHell"
-  s.description = "A shell written in Ruby with extensive tab completions, aliases/nicks, history, syntax highlighting, theming, auto-cd, auto-opening files and more. UPDATE v3.6.8: Fix cd in chained commands - cd now works correctly with && and || operators."
+  s.description = "A shell written in Ruby with extensive tab completions, aliases/nicks, history, syntax highlighting, theming, auto-cd, auto-opening files and more. UPDATE v3.6.9: Don't override TERM variable - let terminal emulator set it correctly."
   s.authors     = ["Geir Isene"]
   s.email       = 'g@isene.com'
   s.files       = ["bin/rsh", "README.md", "PLUGIN_GUIDE.md", ".rshrc"]

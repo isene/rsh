@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.8" # Fix: cd now works in && chained commands
+@version    = "3.6.9" # Don't override TERM - let terminal set it
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -3556,7 +3556,7 @@ begin # Load .rshrc and populate @history
     end
   end 
   ENV["SHELL"] = __FILE__
-  ENV["TERM"]  = "rxvt-unicode-256color"
+  # Don't override TERM - let terminal set it
   ENV["PATH"]  ? ENV["PATH"] += ":" : ENV["PATH"] = ""
   ENV["PATH"] += "/home/#{@user}/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   # Load actual LS_COLORS from file (now that @lscolors is set from .rshrc)
