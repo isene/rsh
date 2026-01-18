@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.9" # Don't override TERM - let terminal set it
+@version    = "3.6.10" # OSC 7: Report cwd to terminal (for wezterm etc.)
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -3591,6 +3591,7 @@ loop do
     end
     @prompt.gsub!(/#{Dir.home}/, '~') # Simplify path in prompt
     print "\033]0;rsh: #{current_dir}\007"   # Set window title (no spawn)
+    print "\033]7;file://#{@node}#{current_dir}\007"  # OSC 7: Report cwd to terminal
     @history[0] = "" unless @history[0]
     cache_executables  # Use cached executable lookup
     # Load plugins on first command (lazy loading)
