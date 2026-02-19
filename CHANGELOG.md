@@ -1,5 +1,17 @@
 # rsh Changelog
 
+## v3.6.12 - Fix long command line wrapping (2026-02-19)
+
+### Fixed
+- **Command line wrapping**: Commands exceeding terminal width now display and edit correctly
+  - Cursor positioning uses wrapping math instead of single-row column offset
+  - `clear_screen_down` replaces `clear_line_after` to clear wrapped rows on redisplay
+  - Scroll detection adjusts `@cmd_row` when wrapping near terminal bottom causes scroll
+- **ANSI stripping for prompt length**: Fixed regex to handle bare `\e[...m` codes (without `\001`/`\002` wrappers) so `@pos0` reflects actual visible prompt width
+- **Pasted newlines**: Newlines and carriage returns in pasted text are now converted to spaces, preventing broken wrapping math and invisible characters in commands
+
+---
+
 ## v3.6.11 - Protect .rshrc from auto-heal corruption (2026-02-19)
 
 ### Fixed

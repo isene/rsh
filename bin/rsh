@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.11" # Fix auto-heal destroying .rshrc on load errors
+@version    = "3.6.12" # Fix long command line wrapping
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -374,30 +374,23 @@ def getstr # A custom Readline-like function
     row, col = @c.pos
     @prompt_last_line = @display_prompt
     # Calculate visible length (strip ANSI) - don't trust @c.pos with complex prompts
-    @pos0 = @display_prompt.gsub(/\001\e\[[0-9;]*m\002/, '').length
+    @pos0 = @display_prompt.gsub(/\001?\e\[[0-9;]*m\002?/, '').length
     @cmd_row = @row0
     @is_multiline = false
   end
-
-  @skip_prompt_print = false  # Track if prompt already printed (for Ctrl-L)
 
   while chr != "ENTER" # Keep going with readline until user presses ENTER
     @ci   = nil
     lift  = false
     right = false
 
-    # Update command line display (not the prompt!)
+    # Clear from cmd_row down (handles wrapped lines from previous iteration)
     @c.row(@cmd_row)
+    @c.col(1)
+    @c.clear_screen_down
 
-    # Reprint the prompt line (preserves colors) - skip if Ctrl-L just printed it
-    unless @skip_prompt_print
-      @c.col(1)
-      print @prompt_last_line
-      @c.clear_line_after
-    end
-    @skip_prompt_print = false  # Reset flag
-
-    # Print command text with syntax highlighting
+    # Always reprint prompt + command text
+    print @prompt_last_line
     print cmd_check(@history[0])
 
     # Print history suggestion if available
@@ -411,12 +404,21 @@ def getstr # A custom Readline-like function
       right = true
     end
 
-    # Position cursor (unified - both now use string length which is 0-indexed)
-    # @pos0 = visible length of prompt (14 for "geir@juba: ~/ ")
-    # @pos = position in command text (0 = start, 5 = after 5 chars)
-    # Terminal columns are 1-indexed, so add +1
-    cursor_col = @pos0 + @pos + 1
-    @c.row(@cmd_row)
+    # Detect if terminal scrolled due to wrapping near the bottom
+    end_row, _ = @c.pos
+    printed_len = @pos0 + @history[0].to_s.length
+    printed_len += @ciprompt.to_s.length if right  # Include suggestion text
+    expected_rows = printed_len > 0 ? (printed_len - 1) / @maxcol : 0
+    actual_start = end_row - expected_rows
+    if actual_start < @cmd_row
+      @cmd_row = [actual_start, 1].max  # Terminal scrolled; adjust (min row 1)
+    end
+
+    # Position cursor with wrapping math
+    total_pos = @pos0 + @pos  # 0-indexed total position
+    cursor_row = @cmd_row + total_pos / @maxcol
+    cursor_col = total_pos % @maxcol + 1
+    @c.row(cursor_row)
     @c.col(cursor_col)
     chr = getchr
     puts "DEBUG: Got char: '#{chr}' (length: #{chr.length})" if ENV['RSH_DEBUG']
@@ -473,11 +475,10 @@ def getstr # A custom Readline-like function
         row, col = @c.pos
         @prompt_last_line = @display_prompt
         # Calculate visible length (match main init)
-        @pos0 = @display_prompt.gsub(/\001\e\[[0-9;]*m\002/, '').length
+        @pos0 = @display_prompt.gsub(/\001?\e\[[0-9;]*m\002?/, '').length
         @cmd_row = @row0
         @is_multiline = false
       end
-      @skip_prompt_print = true  # Skip reprinting on next loop iteration
     when 'UP'    # Go up in history
       if @stk == 0 and @history[0].length > 0
         @tabsearch = @history[0]
@@ -541,7 +542,6 @@ def getstr # A custom Readline-like function
         @history[0][@pos] = ""
       end
       lift = true
-      @c.clear_line_after
     when 'WBACK' # Delete one word to the left (Ctrl-W)
       unless @pos == @pos0
         # Skip over any trailing spaces first
@@ -556,7 +556,6 @@ def getstr # A custom Readline-like function
         end
       end
       lift = true
-      @c.clear_line_after
     when 'C-Y'   # Copy command line to primary selection
       system("echo -n '#{@history[0]}' | xclip")
       puts "\n#{Time.now.strftime("%H:%M:%S")}: Copied to primary selection (paste with middle buttoni)".c(@c_stamp)
@@ -603,6 +602,7 @@ def getstr # A custom Readline-like function
     end
     while $stdin.ready?
       chr = $stdin.getc
+      chr = " " if chr == "\n" || chr == "\r"  # Flatten pasted newlines
       @history[0].insert(@pos,chr)
       @pos += 1
     end
