@@ -1,5 +1,20 @@
 # rsh Changelog
 
+## v3.6.11 - Protect .rshrc from auto-heal corruption (2026-02-19)
+
+### Fixed
+- **Critical:** `auto_heal_rshrc` no longer strips unrecognized lines from .rshrc
+  - Previously, any load error (missing file, race condition at boot) would trigger
+    the auto-healer, which stripped everything except bare `@var = value` assignments
+  - This destroyed ENV settings, prompt config, comments, if/else blocks, and
+    custom code like `File.read()` calls
+- Added `@rshrc_load_failed` guard to prevent `rshrc()` from overwriting .rshrc
+  when the config couldn't be parsed (on SIGTERM/SIGHUP during shutdown)
+- Auto-heal validation now uses `RubyVM::InstructionSequence.compile` instead of
+  `eval` for safer syntax checking
+
+---
+
 ## v3.6.3 - Polish & UX (2025-10-30)
 
 ### ✓ **CONFIG PERSISTENCE**

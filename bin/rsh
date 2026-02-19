@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.10" # OSC 7: Report cwd to terminal (for wezterm etc.)
+@version    = "3.6.11" # Fix auto-heal destroying .rshrc on load errors
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -1495,6 +1495,7 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
   end
 end
 def rshrc # Write user configuration to .rshrc (portable between machines)
+  return if @rshrc_load_failed  # Never overwrite .rshrc if we couldn't parse it
   hist_clean  # Clean history before saving
   if File.exist?(Dir.home+'/.rshrc')
     conf = File.read(Dir.home+'/.rshrc')
@@ -3349,13 +3350,15 @@ def load_rshrc_safe
         load_defaults
       end
     else
-      puts "\033[31mAuto-heal failed. Loading with defaults.\033[0m"
+      puts "\033[31mAuto-heal failed. Loading with defaults (your .rshrc is preserved).\033[0m"
+      @rshrc_load_failed = true
       load_defaults
     end
 
   rescue => e
     puts "\n\033[31mERROR loading .rshrc: #{e.message}\033[0m"
-    puts "\033[33mLoading with defaults...\033[0m\n"
+    puts "\033[33mLoading with defaults (your .rshrc is preserved)...\033[0m\n"
+    @rshrc_load_failed = true
     load_defaults
   end
 end
@@ -3399,31 +3402,17 @@ def auto_heal_rshrc
     end
 
     # Validate Ruby syntax of the healed content
+    # Only check syntax - never strip unknown lines, as user configs
+    # may contain ENV settings, if/else blocks, method calls, etc.
     begin
-      # Try to parse the content
-      eval("BEGIN {return true}\n" + content)
+      RubyVM::InstructionSequence.compile(content)
     rescue SyntaxError => e
-      # If still has syntax errors, extract only valid parts
-      new_content = ""
-
-      # Extract valid variable assignments
-      content.each_line do |line|
-        if line =~ /^(@\w+|\w+)\s*=\s*.+$/
-          begin
-            eval(line)
-            new_content += line
-          rescue
-            # Skip invalid lines
-          end
-        elsif line =~ /^(def|class|module|end|if|else|elsif|when|case|begin|rescue)/
-          new_content += line
-        elsif line.strip.start_with?('#') || line.strip.empty?
-          new_content += line
-        end
-      end
-
-      content = new_content
-      healed = true
+      # Log the error but do NOT destructively rewrite the file.
+      # Stripping "invalid" lines destroys legitimate config like
+      # ENV assignments, prompt logic, and File.read() calls.
+      puts "Warning: .rshrc has syntax error: #{e.message}"
+      puts "Please fix manually. Your config was NOT modified."
+      return false
     end
 
     if healed && content != original_content
