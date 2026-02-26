@@ -1,9 +1,9 @@
 Gem::Specification.new do |s|
   s.name        = 'ruby-shell'
-  s.version     = '3.6.12'
+  s.version     = '3.6.13'
   s.licenses    = ['Unlicense']
   s.summary     = "rsh - Ruby SHell"
-  s.description = "A shell written in Ruby with extensive tab completions, aliases/nicks, history, syntax highlighting, theming, auto-cd, auto-opening files and more. UPDATE v3.6.12: Fix long command line wrapping - correct cursor positioning when commands exceed terminal width."
+  s.description = "A shell written in Ruby with extensive tab completions, aliases/nicks, history, syntax highlighting, theming, auto-cd, auto-opening files and more. UPDATE v3.6.13: Fix cursor position on wide terminals - refresh terminal dimensions each prompt cycle."
   s.authors     = ["Geir Isene"]
   s.email       = 'g@isene.com'
   s.files       = ["bin/rsh", "README.md", "PLUGIN_GUIDE.md", ".rshrc"]

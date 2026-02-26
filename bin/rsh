@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.12" # Fix long command line wrapping
+@version    = "3.6.13" # Refresh terminal width each prompt (fix stale @maxcol)
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -333,6 +333,9 @@ def getstr # A custom Readline-like function
     @pos = @ai_suggestion.length
     @ai_suggestion = nil
   end
+
+  # Refresh terminal dimensions (handles resize since startup)
+  @maxrow, @maxcol = IO.console.winsize
 
   # Print prompt ONCE at start (optimization + multi-line support)
   @row0, p = @c.pos

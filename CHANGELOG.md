@@ -1,5 +1,12 @@
 # rsh Changelog
 
+## v3.6.13 - Refresh terminal dimensions each prompt (2026-02-26)
+
+### Fixed
+- **Stale terminal width**: `@maxcol` is now refreshed via `IO.console.winsize` at the start of each prompt cycle, fixing cursor misplacement after terminal resize or PTY size glitches (e.g., WezTerm reporting stale 80-column width)
+
+---
+
 ## v3.6.12 - Fix long command line wrapping (2026-02-19)
 
 ### Fixed
