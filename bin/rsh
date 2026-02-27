@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.14" # Fix tab completion creating new lines at bottom of screen
+@version    = "3.6.15" # Fix config persistence bugs in .rshrc
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -1529,18 +1529,24 @@ def rshrc # Write user configuration to .rshrc (portable between machines)
     conf = ""
   end
 
+  # Strip runtime data that belongs in .rshstate (may linger from pre-split config)
+  %w[@cmd_frequency @cmd_stats @exe_cache @exe_cache_path @exe_cache_time
+     @completion_weights @history @recordings @plugin_enabled].each do |var|
+    conf.sub!(/^#{Regexp.escape(var)} =.*\n?/, "")
+  end
+
   # Persist user-editable configuration using helper
   conf = persist_var(conf, '@nick', @nick)
   conf = persist_var(conf, '@gnick', @gnick)
   conf = persist_var(conf, '@bookmarks', @bookmarks, !@bookmarks.empty?)
   conf = persist_var(conf, '@defuns', @defuns, !@defuns.empty?)
-  conf = persist_var(conf, '@history_dedup', @history_dedup, @history_dedup && @history_dedup != 'smart')
-  conf = persist_var(conf, '@session_autosave', @session_autosave, @session_autosave && @session_autosave > 0)
-  conf = persist_var(conf, '@auto_correct', @auto_correct, @auto_correct)
-  conf = persist_var(conf, '@slow_command_threshold', @slow_command_threshold, @slow_command_threshold && @slow_command_threshold > 0)
-  conf = persist_var(conf, '@completion_learning', @completion_learning, !@completion_learning)
-  conf = persist_var(conf, '@show_tips', @show_tips, !@show_tips)
-  conf = persist_var(conf, '@completion_show_metadata', @completion_show_metadata, @completion_show_metadata)
+  conf = persist_var(conf, '@history_dedup', @history_dedup)
+  conf = persist_var(conf, '@session_autosave', @session_autosave)
+  conf = persist_var(conf, '@auto_correct', @auto_correct)
+  conf = persist_var(conf, '@slow_command_threshold', @slow_command_threshold)
+  conf = persist_var(conf, '@completion_learning', @completion_learning)
+  conf = persist_var(conf, '@show_tips', @show_tips)
+  conf = persist_var(conf, '@completion_show_metadata', @completion_show_metadata)
   conf = persist_var(conf, '@plugin_disabled', @plugin_disabled, !@plugin_disabled.empty?)
   conf = persist_var(conf, '@validation_rules', @validation_rules, !@validation_rules.empty?)
 

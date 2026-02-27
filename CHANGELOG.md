@@ -1,5 +1,13 @@
 # rsh Changelog
 
+## v3.6.15 - Fix config persistence bugs in .rshrc (2026-02-27)
+
+### Fixed
+- **Scalar config not persisting**: 7 config variables had wrong conditions in `persist_var` calls — values like `0`, `false`, or defaults were silently skipped on save. `@completion_learning` and `@show_tips` had inverted logic. All scalar config vars now always persist
+- **Runtime data bloating .rshrc**: `@exe_cache`, `@history`, `@cmd_stats` and other runtime vars (~65KB) lingered in `.rshrc` after the split-config migration. Now stripped on every save
+
+---
+
 ## v3.6.14 - Fix tab completion stacking at bottom of screen (2026-02-27)
 
 ### Fixed
