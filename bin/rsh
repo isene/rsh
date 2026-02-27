@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.13" # Refresh terminal width each prompt (fix stale @maxcol)
+@version    = "3.6.14" # Fix tab completion creating new lines at bottom of screen
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -486,6 +486,7 @@ def getstr # A custom Readline-like function
       if @stk == 0 and @history[0].length > 0
         @tabsearch = @history[0]
         tab("hist")
+        @cmd_row = @c_row
       else
         if lift
           @history.unshift("")
@@ -593,10 +594,12 @@ def getstr # A custom Readline-like function
       @ci = nil
       #@tabsearch =~ /^-/ ? tabbing("switch") : tabbing("all")
       tab("all")
+      @cmd_row = @c_row
       lift = true
     when 'S-TAB'
       @ci = nil
       tab("hist")
+      @cmd_row = @c_row
       lift = true
     when /^.$/
       @history[0].insert(@pos,chr)

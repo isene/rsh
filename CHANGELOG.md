@@ -1,5 +1,12 @@
 # rsh Changelog
 
+## v3.6.14 - Fix tab completion stacking at bottom of screen (2026-02-27)
+
+### Fixed
+- **Tab completion duplicate lines**: When the prompt was near the bottom of the terminal, each TAB press created a new prompt line instead of replacing in-place. Root cause: `@cmd_row` was not synced with `@c_row` after `tab()` returned, so `getstr` repainted at the stale row after scrolling occurred
+
+---
+
 ## v3.6.13 - Refresh terminal dimensions each prompt (2026-02-26)
 
 ### Fixed
