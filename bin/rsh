@@ -162,6 +162,7 @@ begin # Initialization
   @history_dedup = 'smart'                # History dedup mode: 'off', 'full', 'smart'
   @auto_correct = false                   # Auto-correct typos (default: off)
   @slow_command_threshold = 0             # Threshold for slow command alerts (0 = disabled)
+  @config_dirty = []                      # Track which config vars were changed via :config
   @plugin_dir = Dir.home + '/.rsh/plugins' # Plugins directory
   @plugins = []                           # Loaded plugin instances
   @plugin_enabled = []                    # List of enabled plugin names (whitelist)
@@ -429,7 +430,7 @@ def getstr # A custom Readline-like function
     when 'C-G'   # Ctrl-G opens command in $EDITOR
       temp_file = "/tmp/rsh_edit_#{Process.pid}.tmp"
       File.write(temp_file, @history[0] || "")
-      system("#{ENV['EDITOR'] || 'vi'} #{temp_file}")
+      system(ENV['EDITOR'] || 'vi', temp_file)
       if File.exist?(temp_file)
         edited = File.read(temp_file).strip
         # Convert multi-line to single line with proper separators
@@ -561,7 +562,7 @@ def getstr # A custom Readline-like function
       end
       lift = true
     when 'C-Y'   # Copy command line to primary selection
-      system("echo -n '#{@history[0]}' | xclip")
+      IO.popen('xclip', 'w') { |io| io.write(@history[0]) }
       puts "\n#{Time.now.strftime("%H:%M:%S")}: Copied to primary selection (paste with middle buttoni)".c(@c_stamp)
     when 'C-Z'   # Suspend current process (background job)
       if @current_pid
@@ -968,7 +969,7 @@ def tab(type)
             begin
               count = Dir.entries(clean_item).length - 2
               print " [#{count}]".c(244)
-            rescue
+            rescue Errno::EACCES, Errno::ENOENT
             end
           else
             size = File.size(clean_item)
@@ -1004,7 +1005,7 @@ def tab(type)
               begin
                 count = Dir.entries(clean_item).length - 2
                 print " [#{count}]".c(244)
-              rescue
+              rescue Errno::EACCES, Errno::ENOENT
               end
             else
               size = File.size(clean_item)
@@ -1088,6 +1089,7 @@ def tabend
   @c.col(@c_col)
 end
 def get_command_switches(command) # Helper function to extract switches from --help
+  require 'shellwords' unless defined?(Shellwords)
   # Check cache first (cache expires after 1 hour)
   cache_key = command.to_s.strip
   return [] if cache_key.empty?
@@ -1098,9 +1100,10 @@ def get_command_switches(command) # Helper function to extract switches from --h
   end
 
   # Parse --help output
-  hlp = `#{command} --help 2>/dev/null`
+  escaped = Shellwords.escape(command)
+  hlp = `#{escaped} --help 2>/dev/null`
   # Try -h if --help didn't work
-  hlp = `#{command} -h 2>/dev/null` if hlp.empty?
+  hlp = `#{escaped} -h 2>/dev/null` if hlp.empty?
   return [] if hlp.empty?
 
   switches = []
@@ -1242,6 +1245,7 @@ def config(*args) # Configure rsh settings
   when 'history_dedup'
     if %w[off full smart].include?(value)
       @history_dedup = value
+      @config_dirty << '@history_dedup'
       puts "History deduplication set to '#{value}'"
       rshrc
     else
@@ -1249,30 +1253,37 @@ def config(*args) # Configure rsh settings
     end
   when 'session_autosave'
     @session_autosave = value.to_i
+    @config_dirty << '@session_autosave'
     puts "Session auto-save set to #{value}s #{value.to_i > 0 ? '(enabled)' : '(disabled)'}"
     rshrc
   when 'auto_correct'
     @auto_correct = %w[on true yes 1].include?(value.to_s.downcase)
+    @config_dirty << '@auto_correct'
     puts "Auto-correct #{@auto_correct ? 'enabled' : 'disabled'}"
     rshrc
   when 'slow_command_threshold'
     @slow_command_threshold = value.to_i
+    @config_dirty << '@slow_command_threshold'
     puts "Slow command threshold set to #{value}s #{value.to_i > 0 ? '(enabled)' : '(disabled)'}"
     rshrc
   when 'completion_learning'
     @completion_learning = %w[on true yes 1].include?(value.to_s.downcase)
+    @config_dirty << '@completion_learning'
     puts "Completion learning #{@completion_learning ? 'enabled' : 'disabled'}"
     rshrc
   when 'completion_limit'
     @completion_limit = value.to_i
+    @config_dirty << '@completion_limit'
     puts "Completion limit set to #{value}"
     rshrc
   when 'completion_show_metadata'
     @completion_show_metadata = %w[on true yes 1].include?(value.to_s.downcase)
+    @config_dirty << '@completion_show_metadata'
     puts "Completion metadata display #{@completion_show_metadata ? 'enabled' : 'disabled'}"
     rshrc
   when 'show_tips'
     @show_tips = %w[on true yes 1].include?(value.to_s.downcase)
+    @config_dirty << '@show_tips'
     puts "Startup tips #{@show_tips ? 'enabled' : 'disabled'}"
     rshrc
   else
@@ -1432,7 +1443,7 @@ def format_tab_item(item, show_metadata: false) # Format tab item with color and
         begin
           count = Dir.entries(clean_name).length - 2  # Exclude . and ..
           meta = "[dir, #{count} items]"
-        rescue
+        rescue Errno::EACCES, Errno::ENOENT
           meta = "[dir]"
         end
       else
@@ -1511,7 +1522,7 @@ def rshrc # Write user configuration to .rshrc (portable between machines)
       begin
         file_nicks = eval($1)
         @nick = file_nicks.merge(@nick) if file_nicks.is_a?(Hash)
-      rescue
+      rescue SyntaxError, StandardError
         # If eval fails, keep current @nick
       end
     end
@@ -1521,7 +1532,7 @@ def rshrc # Write user configuration to .rshrc (portable between machines)
       begin
         file_gnicks = eval($1)
         @gnick = file_gnicks.merge(@gnick) if file_gnicks.is_a?(Hash)
-      rescue
+      rescue SyntaxError, StandardError
         # If eval fails, keep current @gnick
       end
     end
@@ -1535,20 +1546,22 @@ def rshrc # Write user configuration to .rshrc (portable between machines)
     conf.sub!(/^#{Regexp.escape(var)} =.*\n?/, "")
   end
 
-  # Persist user-editable configuration using helper
+  # Persist runtime data (nicks, bookmarks, etc. change during normal use)
   conf = persist_var(conf, '@nick', @nick)
   conf = persist_var(conf, '@gnick', @gnick)
   conf = persist_var(conf, '@bookmarks', @bookmarks, !@bookmarks.empty?)
   conf = persist_var(conf, '@defuns', @defuns, !@defuns.empty?)
-  conf = persist_var(conf, '@history_dedup', @history_dedup)
-  conf = persist_var(conf, '@session_autosave', @session_autosave)
-  conf = persist_var(conf, '@auto_correct', @auto_correct)
-  conf = persist_var(conf, '@slow_command_threshold', @slow_command_threshold)
-  conf = persist_var(conf, '@completion_learning', @completion_learning)
-  conf = persist_var(conf, '@show_tips', @show_tips)
-  conf = persist_var(conf, '@completion_show_metadata', @completion_show_metadata)
   conf = persist_var(conf, '@plugin_disabled', @plugin_disabled, !@plugin_disabled.empty?)
   conf = persist_var(conf, '@validation_rules', @validation_rules, !@validation_rules.empty?)
+
+  # Only persist config vars that were explicitly changed via :config in this session
+  conf = persist_var(conf, '@history_dedup', @history_dedup, @config_dirty.include?('@history_dedup'))
+  conf = persist_var(conf, '@session_autosave', @session_autosave, @config_dirty.include?('@session_autosave'))
+  conf = persist_var(conf, '@auto_correct', @auto_correct, @config_dirty.include?('@auto_correct'))
+  conf = persist_var(conf, '@slow_command_threshold', @slow_command_threshold, @config_dirty.include?('@slow_command_threshold'))
+  conf = persist_var(conf, '@completion_learning', @completion_learning, @config_dirty.include?('@completion_learning'))
+  conf = persist_var(conf, '@show_tips', @show_tips, @config_dirty.include?('@show_tips'))
+  conf = persist_var(conf, '@completion_show_metadata', @completion_show_metadata, @config_dirty.include?('@completion_show_metadata'))
 
   File.write(Dir.home+'/.rshrc', conf)
   rshstate  # Also save runtime state
@@ -3850,12 +3863,13 @@ loop do
             puts "#{Time.now.strftime("%H:%M:%S")}: #{@cmd}".c(@c_stamp)
             # Only auto-open files if it's a single filename (no spaces = no command with args)
             if File.read(@cmd).force_encoding("UTF-8").valid_encoding?
-              system("#{ENV['EDITOR']} #{@cmd}") # Try open with user's editor
+              system(ENV['EDITOR'] || 'vi', @cmd) # Try open with user's editor
             else
+              require 'shellwords' unless defined?(Shellwords)
               if @runmailcap
-                Thread.new { system("run-mailcap #{@cmd} 2>/dev/null") }
+                Thread.new { system("run-mailcap #{Shellwords.escape(@cmd)} 2>/dev/null") }
               else
-                Thread.new { system("xdg-open #{@cmd} 2>/dev/null") }
+                Thread.new { system("xdg-open #{Shellwords.escape(@cmd)} 2>/dev/null") }
               end
             end
           else
