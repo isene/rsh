@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.15" # Fix config persistence bugs in .rshrc
+@version    = "3.6.17" # Optimize core input loop
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -388,38 +388,39 @@ def getstr # A custom Readline-like function
     lift  = false
     right = false
 
-    # Clear from cmd_row down (handles wrapped lines from previous iteration)
+    # Cache syntax highlighting (skip re-highlighting on cursor-only moves)
+    cmd_text = @history[0].to_s
+    if cmd_text != @_hl_text
+      @_hl_text = cmd_text.dup
+      @_hl_result = cmd_check(@history[0])
+    end
+
+    # History suggestion lookup
+    @ci  = @history[1..].find_index {|e| e =~ /^#{Regexp.escape(cmd_text)}./}
+    unless @ci == nil
+      @ci += 1
+      @ciprompt = @history[@ci][cmd_text.length..].to_s
+    end
+    right = cmd_text.length > 1 && @ci
+
+    # Compute scroll adjustment before drawing (avoids terminal round-trip)
+    printed_len = @pos0 + cmd_text.length
+    printed_len += @ciprompt.to_s.length if right
+    expected_rows = printed_len > 0 ? (printed_len - 1) / @maxcol : 0
+    if @cmd_row + expected_rows > @maxrow
+      @cmd_row = [@maxrow - expected_rows, 1].max
+    end
+
+    # Redraw prompt + command
     @c.row(@cmd_row)
     @c.col(1)
     @c.clear_screen_down
-
-    # Always reprint prompt + command text
     print @prompt_last_line
-    print cmd_check(@history[0])
-
-    # Print history suggestion if available
-    @ci  = @history[1..].find_index {|e| e =~ /^#{Regexp.escape(@history[0].to_s)}./}
-    unless @ci == nil
-      @ci += 1
-      @ciprompt = @history[@ci][@history[0].to_s.length..].to_s
-    end
-    if @history[0].to_s.length > 1 and @ci
-      print @ciprompt.c(@c_stamp)
-      right = true
-    end
-
-    # Detect if terminal scrolled due to wrapping near the bottom
-    end_row, _ = @c.pos
-    printed_len = @pos0 + @history[0].to_s.length
-    printed_len += @ciprompt.to_s.length if right  # Include suggestion text
-    expected_rows = printed_len > 0 ? (printed_len - 1) / @maxcol : 0
-    actual_start = end_row - expected_rows
-    if actual_start < @cmd_row
-      @cmd_row = [actual_start, 1].max  # Terminal scrolled; adjust (min row 1)
-    end
+    print @_hl_result
+    print @ciprompt.c(@c_stamp) if right
 
     # Position cursor with wrapping math
-    total_pos = @pos0 + @pos  # 0-indexed total position
+    total_pos = @pos0 + @pos
     cursor_row = @cmd_row + total_pos / @maxcol
     cursor_col = total_pos % @maxcol + 1
     @c.row(cursor_row)

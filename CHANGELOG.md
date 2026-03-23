@@ -1,5 +1,13 @@
 # rsh Changelog
 
+## v3.6.17 - Optimize core input loop (2026-03-23)
+
+### Improved
+- **Cached syntax highlighting**: `cmd_check` only re-runs when command text changes, not on cursor-only moves (LEFT, RIGHT, HOME, END)
+- **Math-based scroll detection**: replaced `@c.pos` terminal round-trip with calculation, removing slow I/O from every keystroke
+
+---
+
 ## v3.6.15 - Fix config persistence bugs in .rshrc (2026-02-27)
 
 ### Fixed
