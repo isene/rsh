@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.17" # Optimize core input loop
+@version    = "3.6.18" # Fix nick deletion and hyphenated command handling
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -1522,7 +1522,10 @@ def rshrc # Write user configuration to .rshrc (portable between machines)
     if conf =~ /@nick\s*=\s*(\{.*?\})/m
       begin
         file_nicks = eval($1)
-        @nick = file_nicks.merge(@nick) if file_nicks.is_a?(Hash)
+        if file_nicks.is_a?(Hash)
+          file_nicks.reject! { |k, _| @deleted_nicks&.include?(k) }
+          @nick = file_nicks.merge(@nick)
+        end
       rescue SyntaxError, StandardError
         # If eval fails, keep current @nick
       end
@@ -1819,8 +1822,9 @@ def nick(nick_str = nil)  # Define a new nick like this: `:nick "ls = ls --color
     puts "Imported #{imported.length} nicks"
     rshrc
   elsif nick_str.match(/^\s*-/)
-    source = nick_str.sub(/^\s*-/, '')
+    source = nick_str.sub(/^\s*-/, '').strip
     if @nick.delete(source)
+      (@deleted_nicks ||= []) << source
       puts "Nick '#{source}' deleted"
       rshrc
     else
@@ -3814,9 +3818,9 @@ loop do
           used_param_nick = first_cmd && @nick[first_cmd] && @nick[first_cmd].include?('{{')
 
           # Do nick/gnick substitution
-          ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b/}
+          ca = @nick.transform_keys {|k| /((^\K\s*\K)|(\|\K\s*\K))\b(?<!-)#{Regexp.escape k}\b(?!-)/}
           @cmd = @cmd.gsub(Regexp.union(ca.keys), @nick)
-          ga = @gnick.transform_keys {|k| /\b(?<!-)#{Regexp.escape k}\b/}
+          ga = @gnick.transform_keys {|k| /\b(?<!-)#{Regexp.escape k}\b(?!-)/}
           @cmd = @cmd.gsub(Regexp.union(ga.keys), @gnick)
 
           # Expand placeholders if parametrized nick was used

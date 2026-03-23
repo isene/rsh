@@ -1,5 +1,13 @@
 # rsh Changelog
 
+## v3.6.18 - Fix nick deletion and hyphenated command handling (2026-03-23)
+
+### Fixed
+- **Nick deletion not persisting**: Deleted nicks were resurrected by the multi-instance merge in `rshrc`. Now tracks deleted nicks and excludes them from merge
+- **Hyphenated commands matched by nicks**: Nick `t` would match inside `t-rex`. Added negative lookahead `(?!-)` to nick/gnick substitution regexes
+
+---
+
 ## v3.6.17 - Optimize core input loop (2026-03-23)
 
 ### Improved
