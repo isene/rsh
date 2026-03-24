@@ -562,9 +562,16 @@ def getstr # A custom Readline-like function
         end
       end
       lift = true
-    when 'C-Y'   # Copy command line to primary selection
-      IO.popen('xclip', 'w') { |io| io.write(@history[0]) }
-      puts "\n#{Time.now.strftime("%H:%M:%S")}: Copied to primary selection (paste with middle buttoni)".c(@c_stamp)
+    when 'C-Y'   # Copy to clipboard
+      if @history[0].empty? && @history[1]
+        # Empty line: copy last command to clipboard
+        IO.popen('xclip -selection clipboard', 'w') { |io| io.write(@history[1]) }
+        puts "\n#{Time.now.strftime("%H:%M:%S")}: Last command copied to clipboard".c(@c_stamp)
+      else
+        # Non-empty line: copy current line to clipboard
+        IO.popen('xclip -selection clipboard', 'w') { |io| io.write(@history[0]) }
+        puts "\n#{Time.now.strftime("%H:%M:%S")}: Copied to clipboard".c(@c_stamp)
+      end
     when 'C-Z'   # Suspend current process (background job)
       if @current_pid
         puts "\n[#{@job_id}] Suspended #{@current_pid}"
