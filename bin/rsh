@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.18" # Fix nick deletion and hyphenated command handling
+@version    = "3.6.19" # Fix nick deletion and hyphenated command handling
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -565,11 +565,13 @@ def getstr # A custom Readline-like function
     when 'C-Y'   # Copy to clipboard
       if @history[0].empty? && @history[1]
         # Empty line: copy last command to clipboard
-        IO.popen('xclip -selection clipboard', 'w') { |io| io.write(@history[1]) }
+        IO.popen('xclip -selection clipboard', 'w') { |io| io.write(@history[1]) } rescue nil
+        IO.popen('xclip -selection primary', 'w') { |io| io.write(@history[1]) } rescue nil
         puts "\n#{Time.now.strftime("%H:%M:%S")}: Last command copied to clipboard".c(@c_stamp)
       else
         # Non-empty line: copy current line to clipboard
-        IO.popen('xclip -selection clipboard', 'w') { |io| io.write(@history[0]) }
+        IO.popen('xclip -selection clipboard', 'w') { |io| io.write(@history[0]) } rescue nil
+        IO.popen('xclip -selection primary', 'w') { |io| io.write(@history[0]) } rescue nil
         puts "\n#{Time.now.strftime("%H:%M:%S")}: Copied to clipboard".c(@c_stamp)
       end
     when 'C-Z'   # Suspend current process (background job)
