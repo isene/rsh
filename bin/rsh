@@ -12,18 +12,25 @@
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
-  def c(code);  color(self, "\001\e[38;5;#{code}m\002"); end  # Color code
-  def b;        color(self, "\001\e[1m\002"); end             # Bold
-  def i;        color(self, "\001\e[3m\002"); end             # Italic
-  def u;        color(self, "\001\e[4m\002"); end             # Underline
-  def l;        color(self, "\001\e[5m\002"); end             # Blink
-  def r;        color(self, "\001\e[7m\002"); end             # Reverse
-  def color(text, color_code)  "#{color_code}#{text}\001\e[0m\002" end
+  COLOR_CACHE = Hash.new { |h, k| h[k] = "\001\e[38;5;#{k}m\002".freeze }
+  RESET_CODE  = "\001\e[0m\002".freeze
+  BOLD_CODE   = "\001\e[1m\002".freeze
+  ITALIC_CODE = "\001\e[3m\002".freeze
+  ULINE_CODE  = "\001\e[4m\002".freeze
+  BLINK_CODE  = "\001\e[5m\002".freeze
+  REV_CODE    = "\001\e[7m\002".freeze
+  def c(code);  "#{COLOR_CACHE[code]}#{self}#{RESET_CODE}"; end  # Color code
+  def b;        "#{BOLD_CODE}#{self}#{RESET_CODE}"; end          # Bold
+  def i;        "#{ITALIC_CODE}#{self}#{RESET_CODE}"; end        # Italic
+  def u;        "#{ULINE_CODE}#{self}#{RESET_CODE}"; end         # Underline
+  def l;        "#{BLINK_CODE}#{self}#{RESET_CODE}"; end         # Blink
+  def r;        "#{REV_CODE}#{self}#{RESET_CODE}"; end           # Reverse
 end
 module Cursor # Terminal cursor movement ANSI codes (thanks to https://github.com/piotrmurach/tty-cursor)
   module_function
   ESC = "\e".freeze
   CSI = "\e[".freeze
+  POS_RE = /(?<row>\d+);(?<col>\d+)/.freeze
   def save # Save current position
     print(Gem.win_platform? ? CSI + 's' : ESC + '7')
   end
@@ -44,7 +51,7 @@ module Cursor # Terminal cursor movement ANSI codes (thanks to https://github.co
       # Not a TTY, return default values
       return 25, 80
     end
-    m = res.match /(?<row>\d+);(?<col>\d+)/
+    m = res.match POS_RE
     return m ? [m[:row].to_i, m[:col].to_i] : [25, 80]
   end
   def rowget
