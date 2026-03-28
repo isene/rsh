@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.19" # Fix nick deletion and hyphenated command handling
+@version    = "3.6.20" # Performance: cache color escapes, pre-compile regex
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
