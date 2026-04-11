@@ -8,7 +8,7 @@
 # Web_site:   http://isene.com/
 # Github:     https://github.com/isene/rsh
 # License:    Public domain
-@version    = "3.6.20" # Performance: cache color escapes, pre-compile regex
+@version    = "3.6.21" # Rename String .b/.i/.u to .bd/.it/.ul for Ruby core compatibility
 
 # MODULES, CLASSES AND EXTENSIONS
 class String # Add coloring to strings (with escaping for Readline)
@@ -20,9 +20,9 @@ class String # Add coloring to strings (with escaping for Readline)
   BLINK_CODE  = "\001\e[5m\002".freeze
   REV_CODE    = "\001\e[7m\002".freeze
   def c(code);  "#{COLOR_CACHE[code]}#{self}#{RESET_CODE}"; end  # Color code
-  def b;        "#{BOLD_CODE}#{self}#{RESET_CODE}"; end          # Bold
-  def i;        "#{ITALIC_CODE}#{self}#{RESET_CODE}"; end        # Italic
-  def u;        "#{ULINE_CODE}#{self}#{RESET_CODE}"; end         # Underline
+  def bd;       "#{BOLD_CODE}#{self}#{RESET_CODE}"; end          # Bold
+  def it;       "#{ITALIC_CODE}#{self}#{RESET_CODE}"; end        # Italic
+  def ul;       "#{ULINE_CODE}#{self}#{RESET_CODE}"; end         # Underline
   def l;        "#{BLINK_CODE}#{self}#{RESET_CODE}"; end         # Blink
   def r;        "#{REV_CODE}#{self}#{RESET_CODE}"; end           # Reverse
 end
@@ -111,7 +111,7 @@ begin # Initialization
   @c_archive   = 11                       # Color for archives (yellow)
   @c_file      = 7                        # Color for regular files (white/default)
   # Prompt
-  @prompt      = "rsh > ".c(@c_prompt).b  # Very basic prompt if not defined in .rshrc
+  @prompt      = "rsh > ".c(@c_prompt).bd  # Very basic prompt if not defined in .rshrc
   # Hash & array initializations
   @nick        = {}                       # Initiate alias/nick hash
   @gnick       = {}                       # Initiate generic/global alias/nick hash
@@ -250,7 +250,7 @@ def firstrun
   rc = <<~RSHRC
   # PROMPT
   # The numbers in parenthesis are 256 color codes (the '.c()' is a String extention
-  # to color text in the terminal. Add '.b' for bold and '.i' for italics.
+  # to color text in the terminal. Add '.bd' for bold and '.it' for italics.
   @prompt = "\#{@user}@\#{@node}".c(46) + ":".c(255) + " \#{Dir.pwd}/".c(196) + " ".c(7)
 
   # THEME
@@ -954,7 +954,7 @@ def tab(type)
         choice_color = get_file_color(tabchoice)
         # Escape regex special characters in @tabstr for pattern matching
         escaped_tabstr = Regexp.escape(@tabstr)
-        tabline   = display_choice.sub(/(.*)#{escaped_tabstr}(.*)/, '\1'.c(choice_color) + @tabstr.u.c(choice_color) + '\2'.c(choice_color))
+        tabline   = display_choice.sub(/(.*)#{escaped_tabstr}(.*)/, '\1'.c(choice_color) + @tabstr.ul.c(choice_color) + '\2'.c(choice_color))
         print prompt_for_tab + line1 + tabline + line2       # Print the commandline (use last line only for multi-line)
         @pos   = @pretab.length.to_i + tabchoice.length.to_i  # Set the position on that commandline
         # Unified cursor positioning (always +1 since @pos0 is now string length)
@@ -973,12 +973,12 @@ def tab(type)
         # Can't nest ANSI codes, they must each complete/conclude or they will mess eachother up
         escaped_tabstr = Regexp.escape(@tabstr)
         if display_item.include?(@tabstr)
-          tabline1 = display_item.sub(/(.*?)#{escaped_tabstr}.*/, '\1').c(file_color).b # Bold + color for selected
-          tabline2 = display_item.sub(/.*?#{escaped_tabstr}(.*)/, '\1').c(file_color).b
-          print " " + tabline1 + @tabstr.c(file_color).u.b + tabline2       # Bold, color & underline @tabstr
+          tabline1 = display_item.sub(/(.*?)#{escaped_tabstr}.*/, '\1').c(file_color).bd # Bold + color for selected
+          tabline2 = display_item.sub(/.*?#{escaped_tabstr}(.*)/, '\1').c(file_color).bd
+          print " " + tabline1 + @tabstr.c(file_color).ul.bd + tabline2       # Bold, color & underline @tabstr
         else
           # For fuzzy matches, just show the whole word highlighted
-          print " " + display_item.c(file_color).b
+          print " " + display_item.c(file_color).bd
         end
         # Add metadata if enabled
         if @completion_show_metadata && File.exist?(clean_item)
@@ -1011,7 +1011,7 @@ def tab(type)
           if display_item.include?(@tabstr)
             tabline1 = display_item.sub(/(.*?)#{escaped_tabstr}.*/, '\1').c(file_color) # Color before @tabstr
             tabline2 = display_item.sub(/.*?#{escaped_tabstr}(.*)/, '\1').c(file_color) # Color after @tabstr
-            print " " + tabline1 + @tabstr.c(file_color).u + tabline2       # Print the whole line
+            print " " + tabline1 + @tabstr.c(file_color).ul + tabline2       # Print the whole line
           else
             # For fuzzy matches, just show the whole word
             print " " + display_item.c(file_color)
@@ -1232,7 +1232,7 @@ def config(*args) # Configure rsh settings
 
   if setting.nil?
     # Show current configuration with aligned columns
-    puts "\n  Current Configuration:".c(@c_prompt).b
+    puts "\n  Current Configuration:".c(@c_prompt).bd
     config_items = [
       ["history_dedup", @history_dedup],
       ["session_autosave", "#{@session_autosave}s", @session_autosave > 0 ? "(enabled)" : "(disabled)"],
@@ -1313,7 +1313,7 @@ def env(*args) # Environment variable management
 
   if args.empty?
     # List all environment variables
-    puts "\n  Environment Variables:".c(@c_prompt).b
+    puts "\n  Environment Variables:".c(@c_prompt).bd
     ENV.sort.first(20).each do |key, value|
       value_display = value.length > 50 ? value[0..47] + '...' : value
       puts "    #{key.c(@c_gnick).ljust(25)} = #{value_display}"
@@ -1510,7 +1510,7 @@ def cmd_check(str) # Check if each element on the readline matches commands, nic
     elsif @gnick.include?(el)
       el.c(@c_gnick)
     elsif self.respond_to?(el) && singleton_class.instance_methods(false).include?(el.to_sym)
-      el.c(@c_nick).b  # Ruby functions in bold nick color
+      el.c(@c_nick).bd  # Ruby functions in bold nick color
     elsif @bookmarks && @bookmarks.include?(el)
       # Color bookmarks (after commands and nicks)
       el.c(@c_bookmark)
@@ -1657,7 +1657,7 @@ def help
   col3 = []
 
   # Column 1: Keyboard + Commands + Jobs
-  col1 << "KEYBOARD:".c(@c_prompt).b
+  col1 << "KEYBOARD:".c(@c_prompt).bd
   col1 << "Ctrl-G    Edit in \$EDITOR"
   col1 << "Ctrl-Y    Copy line"
   col1 << "Ctrl-D    Exit + save"
@@ -1665,7 +1665,7 @@ def help
   col1 << "TAB       Complete"
   col1 << "Shift-TAB History search"
   col1 << ""
-  col1 << "CORE COMMANDS:".c(@c_prompt).b
+  col1 << "CORE COMMANDS:".c(@c_prompt).bd
   col1 << ":nick a = b      Create alias"
   col1 << ":nick            List all"
   col1 << ":nick -a         Delete"
@@ -1679,26 +1679,26 @@ def help
   col1 << ":theme name      Color schemes"
   col1 << ":plugins         Extensions"
   col1 << ""
-  col1 << "JOBS:".c(@c_prompt).b
+  col1 << "JOBS:".c(@c_prompt).bd
   col1 << "cmd &       Background"
   col1 << ":jobs       List jobs"
   col1 << ":fg [id]    Foreground"
 
   # Column 2: Sessions + Bookmarks + Recording
-  col2 << "SESSIONS:".c(@c_prompt).b
+  col2 << "SESSIONS:".c(@c_prompt).bd
   col2 << ":save_session nm   Save state"
   col2 << ":load_session nm   Load state"
   col2 << ":list_sessions     Show all"
   col2 << ":rmsession nm|*    Delete"
   col2 << ""
-  col2 << "BOOKMARKS:".c(@c_prompt).b
+  col2 << "BOOKMARKS:".c(@c_prompt).bd
   col2 << ":bm nm path #tag   Create"
   col2 << "name               Jump to bookmark"
   col2 << ":bm                List all"
   col2 << ":bm --stats        Statistics"
   col2 << ":bm --export f     Export"
   col2 << ""
-  col2 << "RECORDING:".c(@c_prompt).b
+  col2 << "RECORDING:".c(@c_prompt).bd
   col2 << ":record start nm   Start recording"
   col2 << ":record stop       Stop recording"
   col2 << ":record show nm    Show commands"
@@ -1706,7 +1706,7 @@ def help
   col2 << ":replay nm         Execute"
   col2 << ":record            List all"
   col2 << ""
-  col2 << "FEATURES:".c(@c_prompt).b
+  col2 << "FEATURES:".c(@c_prompt).bd
   col2 << "gp branch=main     Nick template"
   col2 << "!!                 Repeat last"
   col2 << "!-2                2nd to last"
@@ -1715,21 +1715,21 @@ def help
   col2 << ":completion_stats  Learn patterns"
 
   # Column 3: Config + Integrations + Expansions
-  col3 << "CONFIG:".c(@c_prompt).b
+  col3 << "CONFIG:".c(@c_prompt).bd
   col3 << ":config auto_correct on         Auto-fix"
   col3 << ":config completion_learning on  Learn TAB"
   col3 << ":config slow_command_threshold 5  Slow warn"
   col3 << ":config session_autosave 300    Auto-save"
   col3 << ":config history_dedup smart     Dedup"
   col3 << ""
-  col3 << "INTEGRATIONS:".c(@c_prompt).b
+  col3 << "INTEGRATIONS:".c(@c_prompt).bd
   col3 << "r          rtfm file manager"
   col3 << "f          fzf fuzzy finder"
   col3 << "= expr     xrpn calculator"
   col3 << "@ text     AI text response"
   col3 << "@@ cmd     AI command suggest"
   col3 << ""
-  col3 << "EXPANSIONS:".c(@c_prompt).b
+  col3 << "EXPANSIONS:".c(@c_prompt).bd
   col3 << "~            Home directory"
   col3 << "$VAR         Environment var"
   col3 << "$(cmd)       Command subst"
@@ -1737,7 +1737,7 @@ def help
   col3 << "cmd1 && cmd2 Conditional AND"
   col3 << "for i in...  Bash scripts"
   col3 << ""
-  col3 << "MORE:".c(@c_prompt).b
+  col3 << "MORE:".c(@c_prompt).bd
   col3 << ":help        This help"
   col3 << ":info        About rsh"
   col3 << ":version     Version info"
@@ -1817,7 +1817,7 @@ end
 def nick(nick_str = nil)  # Define a new nick like this: `:nick "ls = ls --color"`
   if nick_str.nil? || nick_str.empty?
     # List all nicks
-    puts "\n  Command nicks:".c(@c_nick).b
+    puts "\n  Command nicks:".c(@c_nick).bd
     if @nick.empty?
       puts "  (none defined)"
     else
@@ -1857,7 +1857,7 @@ end
 def gnick(nick_str = nil) # Define a generic/global nick to match not only commands (format like nick)
   if nick_str.nil? || nick_str.empty?
     # List all gnicks
-    puts "\n  General nicks:".c(@c_gnick).b
+    puts "\n  General nicks:".c(@c_gnick).bd
     if @gnick.empty?
       puts "  (none defined)"
     else
@@ -2026,7 +2026,7 @@ def stats(*args) # Show command execution statistics and analytics
   end
 
   # Display stats (existing code)
-  puts "\n  Command Execution Statistics".c(@c_prompt).b
+  puts "\n  Command Execution Statistics".c(@c_prompt).bd
   puts "  " + "="*50
 
   # Most used commands
@@ -2066,7 +2066,7 @@ def stats(*args) # Show command execution statistics and analytics
   puts
 end
 def stats_graph # Visual graph mode for stats
-  puts "\n  Command Usage Graph".c(@c_prompt).b
+  puts "\n  Command Usage Graph".c(@c_prompt).bd
   puts "  " + "="*50
 
   return puts "No data to display" if @cmd_frequency.nil? || @cmd_frequency.empty?
@@ -2094,7 +2094,7 @@ def stats_graph # Visual graph mode for stats
 
   # Performance graph if data exists
   if @cmd_stats && !@cmd_stats.empty?
-    puts "\n  Command Performance Graph (avg time)".c(@c_prompt).b
+    puts "\n  Command Performance Graph (avg time)".c(@c_prompt).bd
     puts "  " + "="*50
     puts
 
@@ -2173,7 +2173,7 @@ def bm(arg_str = nil) # Enhanced bookmark management with tags
       puts "No bookmarks defined. Use :bm \"name\" to bookmark current directory"
       return
     end
-    puts "\n  Bookmarks:".c(@c_prompt).b
+    puts "\n  Bookmarks:".c(@c_prompt).bd
     @bookmarks.each do |name, data|
       path = data.is_a?(Hash) ? data[:path] : data
       tags = data.is_a?(Hash) && data[:tags] ? " [#{data[:tags].join(', ')}]" : ""
@@ -2284,7 +2284,7 @@ def bookmark_stats # Show bookmark usage statistics
     return
   end
 
-  puts "\n  Bookmark Statistics".c(@c_prompt).b
+  puts "\n  Bookmark Statistics".c(@c_prompt).bd
   puts "  " + "="*50
   puts "\n  Total bookmarks: #{@bookmarks.length}"
 
@@ -2389,7 +2389,7 @@ def list_sessions # List all saved sessions
     return
   end
 
-  puts "\n  Saved Sessions:".c(@c_prompt).b
+  puts "\n  Saved Sessions:".c(@c_prompt).bd
   sessions.sort.each do |name|
     session_path = @session_dir + "/#{name}.json"
     begin
@@ -2444,7 +2444,7 @@ def theme(*args) # Apply color scheme presets
   name = args[0]
 
   if name.nil?
-    puts "\n  Available themes:".c(@c_prompt).b
+    puts "\n  Available themes:".c(@c_prompt).bd
     puts "    default, solarized, dracula, gruvbox, nord, monokai"
     puts "\n  Current theme colors:"
     puts "    prompt:#{' '*5}#{@c_prompt}   cmd:#{' '*8}#{@c_cmd}   nick:#{' '*7}#{@c_nick}"
@@ -2576,7 +2576,7 @@ def plugins(*args) # Plugin management command
       return
     end
 
-    puts "\n  Available Plugins:".c(@c_prompt).b
+    puts "\n  Available Plugins:".c(@c_prompt).bd
     available_plugins.each do |name|
       if @plugin_enabled.include?(name)
         status = '[enabled]'.c(@c_path)
@@ -2615,7 +2615,7 @@ def plugins(*args) # Plugin management command
     plugin_name = args[1]
     plugin = @plugins.find { |p| p[:name] == plugin_name }
     if plugin
-      puts "\n  Plugin: #{plugin_name}".c(@c_prompt).b
+      puts "\n  Plugin: #{plugin_name}".c(@c_prompt).bd
       puts "    Class: #{plugin[:class]}"
       puts "    File: #{@plugin_dir}/#{plugin_name}.rb"
 
@@ -2785,13 +2785,13 @@ def validate(rule_str = nil) # Custom validation rule management
       puts "Or try: :validate --templates"
       return
     end
-    puts "\n  Validation Rules:".c(@c_prompt).b
+    puts "\n  Validation Rules:".c(@c_prompt).bd
     @validation_rules.each_with_index do |rule, i|
       puts "  #{i+1}. #{rule[:pattern].inspect} → #{rule[:action]}"
     end
     puts
   elsif rule_str == '--templates'
-    puts "\n  Common Validation Rule Templates:".c(@c_prompt).b
+    puts "\n  Common Validation Rule Templates:".c(@c_prompt).bd
     puts "  Safety:"
     puts "    :validate rm -rf / = block"
     puts "    :validate DROP TABLE = block"
@@ -2883,7 +2883,7 @@ def completion_stats # Show completion learning statistics
     return
   end
 
-  puts "\n  Completion Learning Statistics".c(@c_prompt).b
+  puts "\n  Completion Learning Statistics".c(@c_prompt).bd
   puts "  " + "="*50
 
   # Group by context
@@ -2922,7 +2922,7 @@ def record(*args) # Command recording management
       return
     end
 
-    puts "\n  Recordings:".c(@c_prompt).b
+    puts "\n  Recordings:".c(@c_prompt).bd
     @recordings.each do |rec_name, data|
       created = Time.at(data[:created] || Time.now.to_i).strftime("%Y-%m-%d %H:%M")
       count = data[:commands]&.length || 0
@@ -2969,7 +2969,7 @@ def record(*args) # Command recording management
     recording = @recordings[name]
     created = Time.at(recording[:created] || Time.now.to_i).strftime("%Y-%m-%d %H:%M:%S")
 
-    puts "\n  Recording: #{name}".c(@c_prompt).b
+    puts "\n  Recording: #{name}".c(@c_prompt).bd
     puts "  Created: #{created}"
     puts "  Commands: #{recording[:commands].length}"
     puts
