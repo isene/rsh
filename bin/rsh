@@ -1433,7 +1433,7 @@ end
 def get_dir_color(path) # Get color for directory path in prompt
   # Check pattern matches first (like RTFM's @topmatch)
   # Set @dir_colors in .rshrc as array of [pattern, color] pairs
-  # Example: @dir_colors = [["PassionFruit", 171], ["Dualog", 72], ["/G", 172], ["", 33]]
+  # Example: @dir_colors = [["Projects", 171], ["Work", 72], ["/G", 172], ["", 33]]
   if @dir_colors && @dir_colors.is_a?(Array)
     match = @dir_colors.find { |pattern, _| pattern.empty? || path.include?(pattern) }
     return match.last if match

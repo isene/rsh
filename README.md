@@ -484,9 +484,9 @@ Point `@lscolors` to a file that sets your LS_COLORS variable. Use [my extended 
 You can override directory colors in the prompt using pattern matching (like RTFM's @topmatch):
 ```ruby
 @dir_colors = [
-  ["PassionFruit", 171],  # Paths containing "PassionFruit" -> magenta
-  ["Dualog", 72],         # Paths containing "Dualog" -> cyan
-  ["/G", 172],            # Paths containing "/G" -> orange
+  ["Projects", 171],  # Paths containing "Projects" -> magenta
+  ["Work", 72],       # Paths containing "Work" -> cyan
+  ["/G", 172],        # Paths containing "/G" -> orange
 ]
 ```
 
